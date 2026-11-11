@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Borg IA Cube — Chat Web</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <!-- Pantalla de acceso -->
+  <section id="acceso" class="tarjeta">
+    <h1>Borg IA Cube</h1>
+    <p class="sub">Diagnóstico de microscopía de sangre con CNN propias</p>
+    <label>Usuario <input id="usuario" autocomplete="username" value="ana"></label>
+    <label>Contraseña <input id="password" type="password" autocomplete="current-password" value="clave123"></label>
+    <div class="fila">
+      <button id="btnIngresar" class="primario">Ingresar</button>
+      <button id="btnRegistro">Registrarse</button>
+    </div>
+    <p id="msgAcceso" class="error"></p>
+  </section>
+
+  <!-- Chat -->
+  <section id="chat" class="oculto">
+    <header>
+      <div>
+        <strong>Borg IA Cube</strong>
+        <span id="quien" class="sub"></span>
+      </div>
+      <div class="controles">
+        <select id="modelo">
+          <option value="A">A — Malaria</option>
+          <option value="B">B — Células sanguíneas</option>
+        </select>
+        <button id="btnHistorial">Historial</button>
+        <button id="btnEstres">Estrés</button>
+        <button id="btnSalir">Salir</button>
+      </div>
+    </header>
+    <main id="mensajes"></main>
+    <div id="previa" class="oculto"><img id="imgPrevia" alt="vista previa"><span id="nomPrevia"></span><button id="quitar">✕</button></div>
+    <footer>
+      <label class="adjuntar" title="Adjuntar imagen">📎<input id="archivo" type="file" accept="image/png,image/jpeg"></label>
+      <input id="texto" placeholder="Escribe un mensaje o /malaria, /sangre, /historial…" autocomplete="off">
+      <button id="btnEnviar" class="primario">Enviar</button>
+    </footer>
+  </section>
+
+  <!-- Modo estrés -->
+  <dialog id="dlgEstres">
+    <form method="dialog">
+      <h3>Modo estrés (prueba de saturación)</h3>
+      <p class="sub">Envía N consultas con un retraso aleatorio entre envíos usando las imágenes que elijas.</p>
+      <label>Imágenes <input id="estresArchivos" type="file" accept="image/png,image/jpeg" multiple></label>
+      <label>Transacciones <input id="estresN" type="number" value="1000" min="1"></label>
+      <label>Delay mínimo (ms) <input id="estresMin" type="number" value="0" min="0"></label>
+      <label>Delay máximo (ms) <input id="estresMax" type="number" value="200" min="0"></label>
+      <label>Modelo
+        <select id="estresModelo"><option value="ACTUAL">El seleccionado</option><option value="MIX">Alternar A y B</option></select>
+      </label>
+      <div class="fila">
+        <button value="cancelar">Cancelar</button>
+        <button id="btnIniciarEstres" value="ok" class="primario">Iniciar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

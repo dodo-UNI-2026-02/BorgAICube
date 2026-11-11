@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Informe PC3 – Borg IA Cube</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5pt; color: #1f1f1e; line-height: 1.45; }
+  h1 { font-size: 20pt; margin: 0 0 4px; } h2 { font-size: 14pt; border-bottom: 2px solid #2a78d6; padding-bottom: 3px; margin-top: 22px; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 14px 0 4px; break-after: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0 10px; font-size: 9.5pt; break-inside: avoid; }
+  th, td { border: 1px solid #d7d6d0; padding: 3px 6px; text-align: left; } th { background: #f3f7fd; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  code, pre { font-family: Consolas, monospace; font-size: 8.8pt; } pre { background: #f6f6f4; padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; break-inside: avoid; }
+  img { max-width: 100%; display: block; margin: 6px auto; break-inside: avoid; }
+  figure { margin: 8px 0; break-inside: avoid; } figcaption { font-size: 9pt; color: #5f5e5a; text-align: center; }
+  .portada { text-align: center; padding-top: 120px; break-after: page; }
+  .portada img { width: 110px; } .portada p { margin: 4px; }
+  .nota { background: #fff8e6; border-left: 4px solid #eda100; padding: 6px 10px; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<div class="portada">
+  <img src="../../logo_UNI.png" alt="UNI">
+  <p>Universidad Nacional de Ingeniería · Facultad de Ciencias · Escuela de Ciencias de la Computación</p>
+  <h1 style="margin-top:40px">Práctica Calificada 3</h1>
+  <p style="font-size:14pt">Borg IA Cube: sistema distribuido de CNN con chat multiplataforma y middleware RabbitMQ</p>
+  <p style="margin-top:30px">CC4P1 Programación Concurrente y Distribuida · Ciclo 2026-II</p>
+  <p style="margin-top:40px">Integrantes: ______________________________</p>
+</div>
+
+<h2>1. Resumen</h2>
+<p>Borg IA Cube es un chat donde el usuario envía la foto de una célula desde Android, escritorio o web y recibe el diagnóstico de una red neuronal convolucional (CNN). Cada "cubo" es una capacidad de IA: el <b>modelo A</b> detecta malaria (célula parasitada o no infectada) y el <b>modelo B</b> clasifica 8 tipos de células sanguíneas. Las CNN están escritas desde cero en Go, sin TensorFlow ni PyTorch, y se entrenan en las 4 configuraciones pedidas: secuencial, paralela, distribuida y paralela distribuida.</p>
+<p>Los clientes hablan con el backend por <b>sockets TCP propios</b>. El backend, los nodos IA y los nodos de base de datos se comunican solo por <b>RabbitMQ</b>. Hay <b>3 bases de motores distintos</b> (PostgreSQL, MariaDB y MySQL), cada una manejada por su propio nodo; <b>3 lenguajes</b> en nodos independientes (Java, Go y Python, más Kotlin en Android); y <b>3 sistemas operativos</b> (Linux, Windows y Android).</p>
+<table>
+  <tr><th>Resultado</th><th>Valor</th></tr>
+  <tr><td>Accuracy de prueba, modelo A (malaria)</td><td class="n">95,2 %</td></tr>
+  <tr><td>Accuracy de prueba, modelo B (células sanguíneas)</td><td class="n">88,6 %</td></tr>
+  <tr><td>Speedup del entrenamiento, paralelo con 12 hilos</td><td class="n">7,0× (A) · 7,5× (B)</td></tr>
+  <tr><td>Saturación: 3000 transacciones (Android + escritorio + web a la vez)</td><td class="n">0 errores</td></tr>
+  <tr><td>Consistencia de BD1, BD2 y BD3 tras 17 131 consultas y 1000 registros</td><td class="n">sin inconsistencias</td></tr>
+</table>
+
+<h2>2. Arquitectura</h2>
+<figure><img src="arquitectura.svg" alt="Arquitectura"><figcaption>Figura 1. Arquitectura diseñada.</figcaption></figure>
+<table>
+  <tr><th>Módulo</th><th>Lenguaje</th><th>SO</th><th>Función</th><th>Comunicación</th></tr>
+  <tr><td>Cliente Android</td><td>Kotlin</td><td>Android</td><td>Chat: login/registro, enviar imagen, historial, prueba de estrés</td><td>TCP propio → backend :5000</td></tr>
+  <tr><td>Cliente escritorio</td><td>Java (Swing y terminal)</td><td>Windows</td><td>El mismo chat; la versión terminal permite ingresar registros uno por uno</td><td>TCP propio → backend :5000</td></tr>
+  <tr><td>Cliente web</td><td>HTML/JS + servidor HTTP propio (Java)</td><td>navegador</td><td>El mismo chat, servido por un servidor HTTP hecho con <code>ServerSocket</code></td><td>HTTP → servidor web → TCP propio → backend</td></tr>
+  <tr><td>Backend</td><td>Java</td><td>Linux</td><td>Valida usuarios, enruta imágenes a RabbitMQ y devuelve el resultado</td><td>TCP con clientes + RabbitMQ</td></tr>
+  <tr><td>Nodo IA (×M)</td><td>Go</td><td>Linux / Windows</td><td>Ejecuta la CNN; también hace de worker en el entrenamiento distribuido</td><td>Consume/publica en RabbitMQ</td></tr>
+  <tr><td>Nodo BD2</td><td>Python + MariaDB</td><td>Windows</td><td>Validación del cliente, del producto (modelo) y de la imagen</td><td>RabbitMQ (RPC)</td></tr>
+  <tr><td>Nodo BD1 / BD3</td><td>Python + PostgreSQL / MySQL</td><td>Linux / Windows</td><td>Guardan imagen, resultado e historial de los modelos A / B</td><td>RabbitMQ</td></tr>
+</table>
+<p><b>Colas de RabbitMQ</b> (exchange <code>ex_cubo</code>, directo): <code>cola_modeloA</code>, <code>cola_modeloB</code>, <code>cola_resultadosA</code>, <code>cola_resultadosB</code>, <code>cola_validacion</code>, <code>cola_respuestas</code>, <code>cola_historialA/B</code> y <code>cola_entrenamiento</code>. <b>Colas de control</b> (exchange <code>ex_control</code>, topic): <code>cola_heartbeat</code>, <code>cola_logs</code> y <code>cola_metricas</code>. Los mensajes que fallan van a <code>cola_errores</code> (dead letter).</p>
+
+<h2>3. Protocolo de comunicación</h2>
+<figure><img src="protocolo.svg" alt="Diagrama de protocolo"><figcaption>Figura 2. Diagrama de protocolo: Cliente → Backend → RabbitMQ → Nodo IA → RabbitMQ → Nodo BD → RabbitMQ → Backend → Cliente.</figcaption></figure>
+<h3>3.1 Cliente ↔ backend (sockets TCP propios)</h3>
+<p>Cada mensaje es una trama <code>[4 bytes con la longitud N, big-endian][N bytes de JSON en UTF-8]</code>. El JSON se arma y se lee a mano (clase <code>Json.java</code>; <code>org.json</code> del SDK en Android). <code>readFully</code> reconstruye una trama partida en varios segmentos TCP.</p>
+<pre>→ {"tipo":"LOGIN","usuario":"ana","password":"…","plataforma":"ANDROID","timestamp":1794367427396}
+← {"tipo":"LOGIN_OK","idCliente":1,"token":"9f1c…","nombre":"Ana Pérez"}
+→ {"tipo":"CONSULTA","token":"9f1c…","idCliente":1,"idMensajeCliente":"c-7a…","tipoConsulta":"IMAGEN",
+   "modelo":"A","formato":"png","payload":"iVBORw0KGgo…(Base64)","texto":"","timestamp":1794367427500}
+← {"tipo":"ACK","idSolicitud":"5e0b…","estado":"EN_COLA"}
+← {"tipo":"RESULTADO","idSolicitud":"5e0b…","modelo":"A","etiqueta":"parasitada","probabilidad":0.998,
+   "probabilidades":{"parasitada":0.998,"no-infectada":0.002},"nodoIA":"ia-maquina1-…","latenciaTotalMs":50}</pre>
+<p>Otros tipos: <code>REGISTRO</code>, <code>CONSULTA</code> con <code>tipoConsulta:"HISTORIAL"</code>, <code>PING/PONG</code> y <code>ERROR</code> (con <code>codigo</code>: <code>NO_AUTENTICADO</code>, <code>CUOTA_EXCEDIDA</code>, <code>FORMATO</code>, <code>TIMEOUT</code>…).</p>
+<h3>3.2 Backend ↔ nodos IA/BD (RabbitMQ, JSON)</h3>
+<pre>cola_modeloA:      {"idSolicitud":"5e0b…","idCliente":1,"modeloDestino":"A","imagen":"(Base64)","formato":"png",
+                    "sha256":"…","bytes":1556,"timestampBackend":1794367427510}
+cola_resultadosA:  {…los mismos datos…, "etiqueta":"parasitada","indiceClase":0,"probabilidad":0.998,
+                    "clases":[…],"probabilidades":[…],"nodoIA":"…","tiempoInferenciaMs":2}
+cola_validacion:   {"tipoValidacion":"SOLICITUD"|"IMAGEN"|"LOGIN"|"REGISTRO", …}  + reply_to y correlation_id
+cola_respuestas:   {"idSolicitud":"5e0b…","estado":"OK","resultado":{…},"nodoBD":"bd1-…"}</pre>
+<p>Las validaciones son RPC: el que pregunta publica con <code>reply_to</code> (su cola privada) y un <code>correlation_id</code>, y BD2 responde a esa cola con el mismo identificador.</p>
+
+<h2>4. Inteligencia artificial</h2>
+<h3>4.1 Datasets</h3>
+<table>
+  <tr><th></th><th>Modelo A: malaria</th><th>Modelo B: células sanguíneas</th></tr>
+  <tr><td>Fuente</td><td>NIH / National Library of Medicine, "Malaria Cell Images" (Kaggle: <i>Cell Images for Detecting Malaria</i>)</td><td>BloodMNIST, de MedMNIST v2 (Yang et al., 2023), derivado del dataset de Acevedo et al. (2020)</td></tr>
+  <tr><td>Imágenes</td><td class="n">27 558 (13 779 por clase)</td><td class="n">17 092</td></tr>
+  <tr><td>Clases</td><td>parasitada, no infectada</td><td>basófilo, eosinófilo, eritroblasto, granulocito inmaduro, linfocito, monocito, neutrófilo, plaqueta</td></tr>
+  <tr><td>Partición entren./valid./prueba</td><td class="n">22 046 / 2 754 / 2 758 (80/10/10, estratificada)</td><td class="n">11 959 / 1 712 / 3 421 (partición oficial)</td></tr>
+  <tr><td>Preprocesamiento</td><td>Relleno a cuadrado con negro (centrado), redimensión bilineal a 32×32, RGB</td><td>Imágenes de 28×28 RGB de MedMNIST</td></tr>
+</table>
+<p>Los dos datasets se guardan en un formato binario propio (<code>malaria_32.bin</code>, <code>blood_28.bin</code>): cabecera <code>DSET</code> con N, C, H, W y K, y luego por imagen <code>[split][etiqueta][C×H×W bytes]</code>. Al entrenar, cada canal se normaliza con la media y la desviación del set de entrenamiento. El nodo IA aplica el mismo relleno, redimensión y normalización a las imágenes que llegan por el chat.</p>
+<h3>4.2 Red neuronal (micro chunks)</h3>
+<table>
+  <tr><th>Micro chunk</th><th>Capas</th><th>Salida (modelo A)</th></tr>
+  <tr><td rowspan="2">Convoluciones (extracción de características)</td><td>conv 3×3, 8 filtros, padding 1 → ReLU → maxpool 2×2</td><td>8×16×16</td></tr>
+  <tr><td>conv 3×3, 16 filtros, padding 1 → ReLU → maxpool 2×2</td><td>16×8×8</td></tr>
+  <tr><td rowspan="2">MLP (clasificador)</td><td>densa 1024 → 64 → ReLU</td><td>64</td></tr>
+  <tr><td>densa 64 → K → Softmax</td><td>K probabilidades</td></tr>
+</table>
+<p>67 122 parámetros (A) y 52 152 (B). Se entrena con SGD con momentum 0,9, tasa 0,01, lotes de 32 y entropía cruzada. El backpropagation se escribió a mano y se verifica con una prueba que compara el gradiente analítico con el numérico (<code>go test ./cnn</code>).</p>
+<h3>4.3 Entrenamiento concurrente, paralelo y distribuido</h3>
+<ul>
+  <li><b>Secuencial:</b> 1 proceso, 1 hilo.</li>
+  <li><b>Paralelo:</b> cada lote se reparte entre H goroutines. Cada una acumula el gradiente en <i>su propio búfer</i> (sin escrituras compartidas, sin condición de carrera); un <code>sync.WaitGroup</code> hace de barrera y luego se suman los búferes.</li>
+  <li><b>Distribuido:</b> el coordinador (<code>entrenar -modo dist</code>) publica en <code>cola_entrenamiento</code> una tarea por nodo con los pesos actuales y las imágenes que le tocan. Cada nodo IA hace K = 10 pasos de SGD con 1 hilo y devuelve sus pesos a la cola privada del coordinador, que los promedia ponderando por muestras (promedio de modelos). Luego empieza la siguiente ronda.</li>
+  <li><b>Paralelo distribuido:</b> igual que el distribuido, pero cada nodo usa todos sus núcleos con el esquema paralelo.</li>
+</ul>
+<h3>4.4 Métricas de los modelos entregados (12 épocas, modo paralelo)</h3>
+<figure><img src="../resultados/graficas/2_curvas_modelo_A.png" alt=""><figcaption>Figura 3. Loss y accuracy por época, modelo A.</figcaption></figure>
+<figure><img src="../resultados/graficas/2_curvas_modelo_B.png" alt=""><figcaption>Figura 4. Loss y accuracy por época, modelo B.</figcaption></figure>
+<table style="width:70%;margin:auto">
+  <tr><th>Modelo</th><th>Accuracy de entrenamiento</th><th>Accuracy de validación</th><th>Accuracy de prueba</th></tr>
+  <tr><td>A (malaria)</td><td class="n">97,3 %</td><td class="n">96,6 %</td><td class="n">95,2 %</td></tr>
+  <tr><td>B (sangre)</td><td class="n">94,4 %</td><td class="n">90,0 %</td><td class="n">88,6 %</td></tr>
+</table>
+<div style="display:flex;gap:10px;align-items:flex-start">
+  <figure style="flex:0.8"><img src="../resultados/graficas/3_confusion_modelo_A.png" alt=""><figcaption>Figura 5. Matriz de confusión, modelo A.</figcaption></figure>
+  <figure style="flex:1.2"><img src="../resultados/graficas/3_confusion_modelo_B.png" alt=""><figcaption>Figura 6. Matriz de confusión, modelo B.</figcaption></figure>
+</div>
+<p>En el modelo B, la mayoría de los errores mezclan granulocitos inmaduros con monocitos y neutrófilos, que son morfológicamente parecidos. Las plaquetas y los eosinófilos casi no se confunden.</p>
+
+<h2>5. Bases de datos heterogéneas</h2>
+<table>
+  <tr><th>Base</th><th>Motor</th><th>Tablas</th><th>Rol</th></tr>
+  <tr><td>BD1</td><td>PostgreSQL 16</td><td><code>imagenes</code>, <code>resultados</code>, <code>historial_consultas</code>, <code>metricas_entrenamiento</code></td><td>Datos del modelo A: metadatos de la imagen, etiqueta, probabilidad, fecha e historial del usuario</td></tr>
+  <tr><td>BD2</td><td>MariaDB 11</td><td><code>clientes</code>, <code>modelos</code>, <code>cliente_modelo</code>, <code>reglas_imagen</code>, <code>imagenes_bloqueadas</code>, <code>auditoria_validaciones</code></td><td>Validación del cliente (clave con hash SHA-256 y sal, estado, cuota diaria), del producto (modelo habilitado) y de la imagen (formato, tamaño, dimensiones, hash bloqueado)</td></tr>
+  <tr><td>BD3</td><td>MySQL 8.4</td><td>las mismas que BD1</td><td>Datos del modelo B</td></tr>
+</table>
+<p>Los scripts de creación están en <code>codigo/sql/</code>. Cada consulta se valida dos veces contra BD2 por RabbitMQ: antes de la IA (cliente, modelo y cuota) y antes de guardar (imagen).</p>
+<h3>Escrituras concurrentes sin corrupción</h3>
+<ul>
+  <li>Cada nodo BD atiende los mensajes con un pool de hilos y <b>una conexión por hilo</b>, nunca compartida.</li>
+  <li>Imagen, resultado e historial se guardan en <b>una sola transacción</b>: o entran las tres filas o ninguna.</li>
+  <li>La cuota se descuenta con <code>SELECT … FOR UPDATE</code>: dos consultas simultáneas del mismo cliente no pueden leer el mismo saldo.</li>
+  <li>Las inserciones son idempotentes (<code>UNIQUE</code> + <code>ON CONFLICT DO NOTHING</code> / <code>INSERT IGNORE</code>): si RabbitMQ entrega dos veces el mismo mensaje, no se duplica nada.</li>
+</ul>
+<table>
+  <tr><th>Prueba de concurrencia (<code>pruebas_concurrencia.py</code>)</th><th>Resultado</th></tr>
+  <tr><td>20 hilos insertan el mismo id_solicitud en BD1 y en BD3</td><td>1 fila por tabla ✔</td></tr>
+  <tr><td>50 hilos piden validación para un cliente con cuota 10 en BD2</td><td>exactamente 10 aprobadas ✔</td></tr>
+  <tr><td>20 hilos registran el mismo usuario nuevo en BD2</td><td>exactamente 1 creado ✔</td></tr>
+</table>
+
+<h2>6. Concurrencia en cada componente</h2>
+<table>
+  <tr><th>Componente</th><th>Hilos</th><th>Sincronización / cómo se evitan las condiciones de carrera</th></tr>
+  <tr><td>Backend (Java)</td><td>1 hilo por conexión (<code>CachedThreadPool</code>) + pool fijo para procesar consultas</td><td>Cada sesión escribe en su socket con un <code>ReentrantLock</code>, así las tramas no se intercalan. <code>ConcurrentHashMap</code> para sesiones y solicitudes pendientes; el <code>remove</code> atómico del Correlador garantiza una sola respuesta aunque coincidan resultado y timeout. Las publicaciones pasan por una <code>LinkedBlockingQueue</code> que vacía un único hilo publicador (un canal AMQP no se comparte). Contadores con <code>AtomicLong</code></td></tr>
+  <tr><td>Servidor HTTP (Java)</td><td>Pool de 128 hilos</td><td><code>ConcurrentHashMap</code> de sesiones web y <code>LinkedBlockingQueue</code> de eventos por sesión</td></tr>
+  <tr><td>Nodo IA (Go)</td><td>H goroutines por modelo</td><td>Productor-consumidor: RabbitMQ entrega hasta H mensajes (prefetch) y las goroutines los leen de un canal de Go. Los pesos solo se leen al predecir. Publicador protegido con <code>sync.Mutex</code>; contadores con <code>atomic.Int64</code></td></tr>
+  <tr><td>Nodos BD (Python)</td><td><code>ThreadPoolExecutor</code></td><td>Una conexión por hilo, transacciones, <code>FOR UPDATE</code>, inserciones idempotentes y <code>threading.Lock</code> para los contadores</td></tr>
+  <tr><td>Android (Kotlin)</td><td>Hilo lector, hilo de ping, hilos de envío</td><td>Escritura del socket en <code>synchronized</code>; <code>ConcurrentHashMap</code> y <code>AtomicInteger</code> en la prueba de estrés; la interfaz solo se toca desde <code>runOnUiThread</code></td></tr>
+</table>
+
+<h2>7. Desarrollo del programa</h2>
+<ul>
+  <li><b><code>codigo/java/src/cubo/backend/</code></b>: <code>Backend</code> (aceptador TCP, pools, heartbeat y métricas), <code>ManejadorCliente</code> (lee tramas y despacha LOGIN, REGISTRO, CONSULTA e HISTORIAL), <code>PuenteRabbit</code> (topología, publicador y RPC), <code>Correlador</code> (idSolicitud → sesión, con timeouts) y <code>Sesion</code>.</li>
+  <li><b><code>codigo/java/src/cubo/web/</code></b>: servidor HTTP propio (<code>PeticionHttp</code> y <code>RespuestaHttp</code> parsean y arman HTTP/1.1 a mano). Sirve <code>codigo/web/</code> y reenvía cada acción del navegador al backend por TCP.</li>
+  <li><b><code>codigo/java/src/cubo/desktop/</code></b>: <code>ClienteDesktop</code> (Swing: burbujas de chat, selector de imagen, historial) y <code>ClienteTerminal</code> (versión base en terminal, con registro de usuarios uno por uno). <b><code>cubo/carga/GeneradorCarga</code></b>: envía N consultas o registros con delay aleatorio y C sesiones concurrentes.</li>
+  <li><b><code>codigo/go/</code></b>: <code>cnn/</code> (red, backpropagation, dataset y preprocesamiento de imágenes), <code>distrib/</code> (tareas de entrenamiento por RabbitMQ y promedio de modelos), <code>rmq/</code> (topología, heartbeat, métricas y logs), <code>cmd/nodo</code> (nodo IA) y <code>cmd/entrenar</code> (4 modos, CSV de métricas y matriz de confusión).</li>
+  <li><b><code>codigo/python/</code></b>: <code>nodo_bd.py</code> (un proceso por base), <code>validador.py</code> (reglas de BD2), <code>adaptadores.py</code> (dialectos y pool), <code>verificar_consistencia.py</code>, <code>pruebas_concurrencia.py</code>, <code>monitor.py</code> (colas, CPU y memoria) y <code>graficas.py</code>.</li>
+  <li><b><code>codigo/android/</code></b>: <code>Conexion.kt</code> (socket y protocolo) y <code>MainActivity.kt</code> (login, chat, historial y prueba de estrés de 1000 envíos que guarda <code>carga_ANDROID.csv</code>).</li>
+</ul>
+<p>Librerías externas: solo los clientes de RabbitMQ (<code>amqp-client</code>, <code>amqp091-go</code>, <code>pika</code>), que el enunciado permite, y los drivers de las bases (<code>psycopg2</code>, <code>pymysql</code>). No se usa WebSocket, Socket.IO ni frameworks web; la CNN usa solo la biblioteca estándar de Go.</p>
+
+<h2>8. Despliegue en red</h2>
+<table>
+  <tr><th>Nodo</th><th>SO</th><th>Lenguaje</th><th>Base</th></tr>
+  <tr><td>Servidor en Google Cloud (VM Ubuntu): RabbitMQ + backend + servidor web</td><td>Linux</td><td>Java</td><td>—</td></tr>
+  <tr><td>Laptop 1: nodo BD2 y clientes de escritorio y web</td><td>Windows</td><td>Python, Java</td><td>MariaDB</td></tr>
+  <tr><td>Laptop 2: nodos IA y nodo BD1</td><td>Linux</td><td>Go, Python</td><td>PostgreSQL</td></tr>
+  <tr><td>Laptop 3: nodo BD3 y nodos IA</td><td>Windows</td><td>Python, Go</td><td>MySQL</td></tr>
+  <tr><td>Celular</td><td>Android</td><td>Kotlin</td><td>—</td></tr>
+</table>
+<p>Todos los nodos se conectan <i>hacia</i> el servidor (<code>CUBO_RABBIT_URL=amqp://cubo:…@IP:5672/cubo</code>), así que no hace falta abrir puertos en las laptops; en la VM se abren 5000, 8080 y 5672. Los pasos están en <code>PC3/NUBE_GCP.md</code>.</p>
+
+<h2>9. Evaluación de desempeño</h2>
+<div class="nota">Entorno de las mediciones: una laptop con Intel Core i5-13420H (8 núcleos, 12 hilos) y 16 GB de RAM. Cada "máquina" de las configuraciones distribuidas es un contenedor Linux limitado a núcleos propios con <code>--cpuset-cpus</code>: 1 núcleo físico en <i>dist</i> y 4 núcleos lógicos en <i>pardist</i>. RabbitMQ, el backend y los nodos BD corren en Windows. Los mismos scripts sirven en el clúster real.</div>
+<h3>9.1 Entrenamiento en las 4 configuraciones (3 épocas, semilla fija)</h3>
+<table>
+  <tr><th>Configuración</th><th>Máquinas × hilos</th><th>A: s/época</th><th>A: speedup</th><th>A: acc. prueba</th><th>B: s/época</th><th>B: speedup</th><th>B: acc. prueba</th></tr>
+  <tr><td>Secuencial</td><td>1 × 1</td><td class="n">57,4</td><td class="n">1,00</td><td class="n">95,3 %</td><td class="n">25,9</td><td class="n">1,00</td><td class="n">83,7 %</td></tr>
+  <tr><td>Paralelo</td><td>1 × 12</td><td class="n">8,2</td><td class="n">7,02</td><td class="n">95,0 %</td><td class="n">3,4</td><td class="n">7,51</td><td class="n">83,9 %</td></tr>
+  <tr><td>Distribuido</td><td>2 × 1</td><td class="n">26,8</td><td class="n">2,14</td><td class="n">92,6 %</td><td class="n">11,4</td><td class="n">2,26</td><td class="n">82,3 %</td></tr>
+  <tr><td>Distribuido</td><td>3 × 1</td><td class="n">16,8</td><td class="n">3,41</td><td class="n">82,3 %</td><td class="n">6,7</td><td class="n">3,85</td><td class="n">80,2 %</td></tr>
+  <tr><td>Paralelo distribuido</td><td>2 × 4</td><td class="n">10,6</td><td class="n">5,40</td><td class="n">92,9 %</td><td class="n">4,7</td><td class="n">5,47</td><td class="n">82,9 %</td></tr>
+  <tr><td>Paralelo distribuido</td><td>3 × 4</td><td class="n">10,2</td><td class="n">5,65</td><td class="n">82,9 %</td><td class="n">4,4</td><td class="n">5,90</td><td class="n">80,5 %</td></tr>
+</table>
+<figure><img src="../resultados/graficas/1_entrenamiento_tiempo_speedup.png" alt=""><figcaption>Figura 7. Tiempo por época y speedup del entrenamiento.</figcaption></figure>
+<p>El paralelo en una máquina es el más rápido porque no paga comunicación. El distribuido escala casi linealmente (2,1× con 2 nodos y 3,4× con 3, cada uno con 1 núcleo): incluso supera la eficiencia ideal porque cada nodo usa un núcleo físico completo y su parte de los datos cabe mejor en caché. En el paralelo distribuido, el tercer nodo aporta poco: sus núcleos (8–11) son los de eficiencia del i5 y además los comparte con RabbitMQ y Windows. El promedio de modelos cada 10 pasos baja el accuracy con 3 nodos y solo 3 épocas (82–83 %), porque cada nodo ve un tercio de los datos entre promedios; con más épocas o sincronizando más seguido se recupera (el modelo entregado se entrenó 12 épocas).</p>
+
+<h3>9.2 Inferencia: 2000 consultas (1000 por escritorio + 1000 por web, 32 sesiones, delay aleatorio 0–50 ms)</h3>
+<table>
+  <tr><th>Configuración</th><th>Nodos IA × núcleos</th><th>Throughput (tx/s)</th><th>Latencia media (ms)</th><th>Errores</th></tr>
+  <tr><td>Secuencial</td><td>1 × 1 (1 hilo)</td><td class="n">155,4</td><td class="n">3 410</td><td class="n">0</td></tr>
+  <tr><td>Paralelo</td><td>1 × 4 (8 hilos)</td><td class="n">176,4</td><td class="n">2 037</td><td class="n">0</td></tr>
+  <tr><td>Distribuido</td><td>2 × 1</td><td class="n">174,1</td><td class="n">2 444</td><td class="n">0</td></tr>
+  <tr><td>Distribuido</td><td>3 × 1</td><td class="n">179,9</td><td class="n">2 069</td><td class="n">0</td></tr>
+  <tr><td>Paralelo distribuido</td><td>1 × 4</td><td class="n">180,2</td><td class="n">2 143</td><td class="n">0</td></tr>
+  <tr><td>Paralelo distribuido</td><td>2 × 4</td><td class="n">180,8</td><td class="n">1 478</td><td class="n">0</td></tr>
+  <tr><td>Paralelo distribuido</td><td>3 × 4</td><td class="n">176,5</td><td class="n">1 939</td><td class="n">0</td></tr>
+</table>
+<div style="display:flex;gap:10px">
+  <figure style="flex:1.2"><img src="../resultados/graficas/4_throughput_vs_configuracion.png" alt=""><figcaption>Figura 8. Throughput vs. configuración.</figcaption></figure>
+  <figure style="flex:1"><img src="../resultados/graficas/5_latencia_vs_nodos.png" alt=""><figcaption>Figura 9. Latencia vs. número de nodos IA.</figcaption></figure>
+</div>
+<p>En secuencial el cuello de botella es el nodo IA: <code>cola_modeloA/B</code> llega a 346 mensajes en espera. Con más núcleos o más nodos esas colas quedan vacías y la latencia baja de 3,4 s a 1,5 s; a partir de ahí lo que se acumula es <code>cola_resultadosA/B</code>. El límite pasa a los nodos BD, que por cada consulta validan contra BD2 y hacen una transacción, y el throughput se estabiliza en unos 180 tx/s. Para subirlo habría que replicar los nodos BD1/BD3 o darles más hilos, no agregar nodos IA. Una inferencia aislada tarda unos 2,6 ms.</p>
+
+<h3>9.3 Prueba de saturación: Android + escritorio + web a la vez (1000 transacciones cada uno, delay aleatorio 0–50 ms, 3 nodos IA)</h3>
+<table>
+  <tr><th>Cliente</th><th>Transacciones</th><th>OK</th><th>Tasa de errores</th><th>Latencia media (ms)</th><th>p95 (ms)</th><th>Throughput (tx/s)</th></tr>
+  <tr><td>Escritorio</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">2 046</td><td class="n">3 368</td><td class="n">83,8</td></tr>
+  <tr><td>Web</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">2 082</td><td class="n">3 372</td><td class="n">83,8</td></tr>
+  <tr><td>Android (Genymotion)</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">393</td><td class="n">2 607</td><td class="n">25,3</td></tr>
+</table>
+<figure><img src="../resultados/graficas/6_saturacion_latencia_errores.png" alt=""><figcaption>Figura 10. Latencia y throughput por cliente durante la saturación.</figcaption></figure>
+<figure><img src="../resultados/graficas/7_rabbitmq_colas_bajo_carga.png" alt=""><figcaption>Figura 11. Uso de RabbitMQ bajo carga: mensajes pendientes por cola.</figcaption></figure>
+<figure><img src="../resultados/graficas/8_cpu_memoria_por_nodo.png" alt=""><figcaption>Figura 12. CPU y memoria de cada nodo durante la saturación.</figcaption></figure>
+<p>Durante el pico, <code>cola_resultadosB</code> llega a ~330 mensajes y <code>cola_resultadosA</code> a ~270, y las dos se vacían en unos 2 s cuando termina la ráfaga. Las colas de los modelos casi no crecen. Android envía en un solo hilo con su propio delay, por eso ofrece menos carga y ve menos latencia. La CPU se mide como porcentaje del total de núcleos del equipo (los nodos IA, de los 4 núcleos de su contenedor). El backend Java es el que más memoria usa (167 MB); cada nodo IA en Go usa menos de 20 MB.</p>
+
+<h3>9.4 1000 registros nuevos y validación de BD1, BD2 y BD3</h3>
+<p>El generador registró 1000 clientes nuevos aleatorios (<code>--tipo REGISTRO</code>, 8 sesiones): 1000 OK, latencia media de 25 ms y 146 registros/s. Después de todas las pruebas, <code>verificar_consistencia.py</code> cruzó las tres bases:</p>
+<table>
+  <tr><th>Chequeo</th><th>Valor</th></tr>
+  <tr><td>Resultados en BD1 (PostgreSQL) / BD3 (MySQL)</td><td class="n">8 510 / 8 621</td></tr>
+  <tr><td>Validaciones de imagen válidas en BD2 (MariaDB)</td><td class="n">17 131</td></tr>
+  <tr><td>Resultados sin validación en BD2 · en BD1 y BD3 a la vez · duplicados</td><td class="n">0 · 0 · 0</td></tr>
+  <tr><td>Consultas OK para el cliente sin resultado guardado</td><td class="n">0</td></tr>
+  <tr><td>Clientes en BD2 (1004 iniciales + 1000 registrados + 1 de prueba manual)</td><td class="n">2 005</td></tr>
+  <tr><td><b>Resultado</b></td><td><b>BD1, BD2 y BD3 consistentes</b></td></tr>
+</table>
+
+<h2>10. Conclusiones</h2>
+<ul>
+  <li>El sistema cumple el flujo pedido de punta a punta con los tres clientes, usando sockets propios entre clientes y backend y RabbitMQ como único middleware entre el backend, los nodos IA y los nodos BD.</li>
+  <li>Las CNN escritas desde cero alcanzan 95,2 % (malaria) y 88,6 % (8 tipos de células). El entrenamiento escala hasta 7,5× en paralelo y 3,9× al distribuirlo en 3 nodos de un núcleo.</li>
+  <li>RabbitMQ desacopla las etapas: bajo saturación los mensajes esperan en las colas en lugar de perderse (0 errores en 3000 transacciones simultáneas). La profundidad de cada cola muestra en tiempo real cuál es el cuello de botella.</li>
+  <li>Las transacciones, <code>FOR UPDATE</code>, las inserciones idempotentes y una conexión por hilo mantienen consistentes las tres bases bajo escritura concurrente.</li>
+</ul>
+
+<h2>Anexo: cómo ejecutar</h2>
+<p>El detalle está en <code>PC3/README.md</code>. En resumen: crear las bases con <code>codigo/sql/*.sql</code>; compilar Java (<code>javac -d out -cp "lib/*" …</code>), Go (<code>go build ./cmd/...</code>) y Android (<code>gradlew assembleDebug</code>); levantar con <code>scripts/local.sh</code>; medir con <code>scripts/mediciones.sh</code> y <code>graficas.py</code>.</p>
+<p>Para compilar desde el comprimido de entrega, que solo trae fuentes, faltan dos archivos que no son código fuente: el módulo de Go, <code>go.mod</code> con <code>module cubo/ia</code>, <code>go 1.24</code> y <code>require github.com/rabbitmq/amqp091-go v1.10.0</code>; y el <code>AndroidManifest.xml</code> con el permiso <code>INTERNET</code> y <code>MainActivity</code> como actividad principal. Los modelos entrenados se regeneran con <code>entrenar -modelo A|B -modo par -epocas 12</code>.</p>
+</body>
+</html>

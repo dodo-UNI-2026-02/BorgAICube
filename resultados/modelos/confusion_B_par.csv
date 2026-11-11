@@ -1,0 +1,9 @@
+real\predicha,basofilo,eosinofilo,eritroblasto,granulocito-inmaduro,linfocito,monocito,neutrofilo,plaqueta
+basofilo,179,12,0,28,3,21,1,0
+eosinofilo,2,616,0,1,1,2,2,0
+eritroblasto,4,1,283,8,7,6,2,0
+granulocito-inmaduro,22,6,7,432,13,85,14,0
+linfocito,1,1,8,10,213,9,1,0
+monocito,1,2,2,26,5,247,1,0
+neutrofilo,4,11,2,45,1,8,595,0
+plaqueta,0,1,3,0,0,0,1,465

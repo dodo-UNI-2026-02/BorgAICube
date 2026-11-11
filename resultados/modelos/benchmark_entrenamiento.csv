@@ -1,0 +1,3 @@
+fecha,modelo,modo,maquinas,hilos_por_maquina,epocas,tiempo_medio_epoca_s,acc_test,speedup,eficiencia
+2026-11-11T02:59:22Z,A,par,1,12,12,8.694,0.9518,,
+2026-11-11T03:00:07Z,B,par,1,12,12,3.320,0.8857,,

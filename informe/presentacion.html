@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Presentación PC3 – Borg IA Cube</title>
+<style>
+  @page { size: 338.7mm 190.5mm; margin: 0; }
+  body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; color: #1f1f1e; }
+  .s { width: 338.7mm; height: 190.5mm; box-sizing: border-box; padding: 14mm 18mm; page-break-after: always; position: relative; overflow: hidden; }
+  .s:last-child { page-break-after: auto; }
+  h1 { font-size: 30pt; margin: 0 0 6mm; } h2 { font-size: 24pt; margin: 0 0 6mm; color: #1f1f1e; border-left: 8px solid #2a78d6; padding-left: 12px; }
+  p, li { font-size: 15pt; line-height: 1.45; } li { margin: 2mm 0; }
+  .pie { position: absolute; bottom: 7mm; right: 18mm; font-size: 10pt; color: #8a8984; }
+  .dos { display: flex; gap: 10mm; align-items: center; } .dos > * { flex: 1; min-width: 0; }
+  img { max-width: 100%; max-height: 120mm; display: block; margin: auto; }
+  table { border-collapse: collapse; font-size: 13pt; width: 100%; } th, td { border: 1px solid #d7d6d0; padding: 5px 9px; } th { background: #f3f7fd; text-align: left; }
+  td.n { text-align: right; }
+  .portada { background: #0d366b; color: #fff; display: flex; flex-direction: column; justify-content: center; }
+  .portada h1 { font-size: 44pt; } .portada p { font-size: 17pt; margin: 2mm 0; color: #cde2fb; }
+  .grande { font-size: 40pt; font-weight: 700; color: #2a78d6; } .chip { display:inline-block; background:#f3f7fd; border-radius:6px; padding:3mm 5mm; margin:2mm; font-size:14pt; }
+  code { font-family: Consolas, monospace; font-size: 12pt; background: #f6f6f4; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="s portada">
+  <h1>Borg IA Cube</h1>
+  <p>Sistema distribuido de CNN con chat multiplataforma y middleware RabbitMQ</p>
+  <p style="margin-top:12mm">Práctica Calificada 3 · CC4P1 Programación Concurrente y Distribuida · UNI 2026-II</p>
+</div>
+
+<div class="s">
+  <h2>El problema</h2>
+  <div class="dos">
+    <div>
+      <p>El usuario envía la foto de una célula por un chat y recibe un diagnóstico de IA.</p>
+      <ul>
+        <li><b>Cubo A, malaria:</b> parasitada / no infectada</li>
+        <li><b>Cubo B, sangre:</b> 8 tipos de células</li>
+        <li>Clientes: <b>Android, escritorio y web</b></li>
+        <li>CNN escrita desde cero (sin TensorFlow ni PyTorch)</li>
+      </ul>
+    </div>
+    <div style="text-align:center">
+      <div class="grande">95,2 %</div><p>accuracy, modelo A</p>
+      <div class="grande">88,6 %</div><p>accuracy, modelo B</p>
+    </div>
+  </div>
+  <div class="pie">Borg IA Cube · PC3</div>
+</div>
+
+<div class="s">
+  <h2>Arquitectura</h2>
+  <img src="arquitectura.svg" style="max-height:128mm">
+  <div class="pie">3 SO · 3 BD · 3 lenguajes en nodos independientes</div>
+</div>
+
+<div class="s">
+  <h2>Protocolo: viaje de una consulta</h2>
+  <div class="dos">
+    <img src="protocolo.svg" style="max-height:140mm">
+    <ul style="flex:0.7">
+      <li>Cliente ↔ backend: <b>TCP propio</b>, trama <code>[4 bytes][JSON]</code></li>
+      <li>Backend ↔ nodos: <b>solo RabbitMQ</b></li>
+      <li>BD2 valida <b>2 veces</b>: cliente/cuota y luego la imagen</li>
+      <li>BD1/BD3 guardan en <b>1 transacción</b></li>
+    </ul>
+  </div>
+</div>
+
+<div class="s">
+  <h2>La CNN: dos micro chunks</h2>
+  <div class="dos">
+    <div>
+      <p><b>Convoluciones</b>: conv 3×3 (8) → ReLU → pool → conv 3×3 (16) → ReLU → pool</p>
+      <p><b>MLP</b>: densa 64 → ReLU → densa K → Softmax</p>
+      <p>SGD con momentum, backpropagation escrito a mano y verificado con gradiente numérico.</p>
+      <p>Datasets: NIH Malaria (27 558 imágenes) y BloodMNIST (17 092).</p>
+    </div>
+    <img src="../resultados/graficas/3_confusion_modelo_B.png" style="max-height:120mm">
+  </div>
+</div>
+
+<div class="s">
+  <h2>Entrenamiento en 4 configuraciones</h2>
+  <img src="../resultados/graficas/1_entrenamiento_tiempo_speedup.png" style="max-height:105mm">
+  <p style="text-align:center">Paralelo (12 hilos): <b>7,0–7,5×</b> · Distribuido (3 nodos × 1 núcleo): <b>3,4–3,9×</b> · Paralelo distribuido (3 × 4): <b>5,7–5,9×</b></p>
+</div>
+
+<div class="s">
+  <h2>Concurrencia y consistencia</h2>
+  <table>
+    <tr><th>Componente</th><th>Hilos</th><th>Cómo se evita la condición de carrera</th></tr>
+    <tr><td>Backend Java</td><td>1 por cliente + pool</td><td>ReentrantLock por socket, ConcurrentHashMap, remove atómico</td></tr>
+    <tr><td>Nodo IA Go</td><td>H goroutines</td><td>Productor-consumidor; un búfer de gradiente por goroutine</td></tr>
+    <tr><td>Nodos BD Python</td><td>Pool de hilos</td><td>1 conexión por hilo, transacciones, SELECT … FOR UPDATE, INSERT idempotente</td></tr>
+    <tr><td>Android Kotlin</td><td>Lector + envío</td><td>Escritura synchronized, ConcurrentHashMap</td></tr>
+  </table>
+  <p>Prueba: 50 hilos contra una cuota de 10 → <b>exactamente 10</b> aprobadas. 20 hilos con el mismo id → <b>1 fila</b>.</p>
+</div>
+
+<div class="s">
+  <h2>Inferencia: throughput y latencia</h2>
+  <div class="dos">
+    <img src="../resultados/graficas/4_throughput_vs_configuracion.png">
+    <img src="../resultados/graficas/5_latencia_vs_nodos.png">
+  </div>
+  <p>Más nodos IA bajan la latencia de 3,4 s a 1,5 s; el throughput se estabiliza en ~180 tx/s porque el cuello de botella pasa a los nodos BD.</p>
+</div>
+
+<div class="s">
+  <h2>Saturación: Android + escritorio + web a la vez</h2>
+  <div class="dos">
+    <img src="../resultados/graficas/7_rabbitmq_colas_bajo_carga.png">
+    <div style="flex:0.55">
+      <p><span class="grande">3000</span><br>transacciones</p>
+      <p><span class="grande">0</span><br>errores</p>
+      <p>Los mensajes esperan en las colas y se vacían en ~2 s.</p>
+    </div>
+  </div>
+</div>
+
+<div class="s">
+  <h2>Conclusiones</h2>
+  <ul>
+    <li>Flujo completo con los 3 clientes: <b>sockets propios + RabbitMQ</b> como único middleware.</li>
+    <li>CNN propia: <b>95,2 %</b> y <b>88,6 %</b>. Entrenamiento hasta <b>7,5×</b> más rápido.</li>
+    <li>RabbitMQ absorbe los picos: <b>0 errores</b> en la saturación, y cada cola muestra dónde está el cuello de botella.</li>
+    <li>BD1, BD2 y BD3 <b>consistentes</b> tras 17 131 consultas y 1000 registros concurrentes.</li>
+  </ul>
+  <div class="pie">¡Gracias!</div>
+</div>
+
+</body>
+</html>

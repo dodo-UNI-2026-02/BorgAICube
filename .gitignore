@@ -1,0 +1,14 @@
+# Entorno y compilados
+.venv/
+bin-linux/
+codigo/java/out/
+codigo/android/.gradle/
+codigo/android/build/
+codigo/android/app/build/
+codigo/android/local.properties
+__pycache__/
+*.class
+# Datasets (van en el Release v1.0) y salidas locales
+datos/*.bin
+entrega/
+resultados/logs/

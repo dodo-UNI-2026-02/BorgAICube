@@ -1,0 +1,5 @@
+[OK ] BD1: 20 hilos con el mismo id_solicitud → filas por tabla [1, 1, 1], errores 0
+[OK ] BD3: 20 hilos con el mismo id_solicitud → filas por tabla [1, 1, 1], errores 0
+[OK ] BD2: 50 hilos contra cuota 10 → aprobadas 10, usadas_hoy 10, errores 0
+[OK ] BD2: 20 hilos registran el mismo usuario → creados 1, filas 1, errores 0
+TODAS LAS PRUEBAS PASARON

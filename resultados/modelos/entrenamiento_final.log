@@ -1,0 +1,30 @@
+Modelo A: 22046 entrenamiento, 2754 validación, 2758 prueba | 67122 parámetros | modo par
+época 1: loss 0.3915 acc 0.8143 | val loss 0.1725 acc 0.9343 | 7.3 s
+época 2: loss 0.1645 acc 0.9473 | val loss 0.1495 acc 0.9568 | 7.6 s
+época 3: loss 0.1414 acc 0.9542 | val loss 0.1261 acc 0.9619 | 10.1 s
+época 4: loss 0.1302 acc 0.9573 | val loss 0.1163 acc 0.9673 | 8.7 s
+época 5: loss 0.1226 acc 0.9587 | val loss 0.1242 acc 0.9630 | 10.0 s
+época 6: loss 0.1159 acc 0.9603 | val loss 0.1186 acc 0.9622 | 9.0 s
+época 7: loss 0.1090 acc 0.9624 | val loss 0.1173 acc 0.9633 | 10.7 s
+época 8: loss 0.1018 acc 0.9644 | val loss 0.1071 acc 0.9655 | 9.5 s
+época 9: loss 0.0978 acc 0.9659 | val loss 0.1210 acc 0.9579 | 8.3 s
+época 10: loss 0.0906 acc 0.9667 | val loss 0.1095 acc 0.9630 | 7.9 s
+época 11: loss 0.0840 acc 0.9697 | val loss 0.1137 acc 0.9648 | 8.2 s
+época 12: loss 0.0774 acc 0.9729 | val loss 0.1084 acc 0.9662 | 7.0 s
+Prueba: accuracy 0.9518
+Modelo guardado en ../datos/modelo_A.gob
+Modelo B: 11959 entrenamiento, 1712 validación, 3421 prueba | 52152 parámetros | modo par
+época 1: loss 0.7502 acc 0.7302 | val loss 0.6404 acc 0.7640 | 3.6 s
+época 2: loss 0.4747 acc 0.8280 | val loss 0.4667 acc 0.8271 | 3.6 s
+época 3: loss 0.3795 acc 0.8585 | val loss 0.4407 acc 0.8458 | 3.7 s
+época 4: loss 0.3220 acc 0.8842 | val loss 0.4030 acc 0.8563 | 3.7 s
+época 5: loss 0.2934 acc 0.8919 | val loss 0.3833 acc 0.8803 | 3.5 s
+época 6: loss 0.2778 acc 0.8989 | val loss 0.3829 acc 0.8686 | 3.4 s
+época 7: loss 0.2416 acc 0.9145 | val loss 0.3938 acc 0.8709 | 3.2 s
+época 8: loss 0.2276 acc 0.9185 | val loss 0.2900 acc 0.9077 | 3.1 s
+época 9: loss 0.2061 acc 0.9260 | val loss 0.3149 acc 0.8943 | 3.0 s
+época 10: loss 0.1861 acc 0.9321 | val loss 0.3406 acc 0.8896 | 3.1 s
+época 11: loss 0.1732 acc 0.9371 | val loss 0.3502 acc 0.8960 | 3.1 s
+época 12: loss 0.1553 acc 0.9436 | val loss 0.3648 acc 0.8995 | 2.9 s
+Prueba: accuracy 0.8857
+Modelo guardado en ../datos/modelo_B.gob
