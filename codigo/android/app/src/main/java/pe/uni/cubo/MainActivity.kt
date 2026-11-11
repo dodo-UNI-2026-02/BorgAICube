@@ -37,7 +37,7 @@ class MainActivity : Activity() {
     }
 
     private fun pantallaLogin() {
-        val host = EditText(this).apply { hint = "IP del servidor"; setText("192.168.1.10") }
+        val host = EditText(this).apply { hint = "IP del servidor"; setText("34.176.215.27") }
         val puerto = EditText(this).apply { hint = "Puerto"; setText("5000") }
         val usuario = EditText(this).apply { hint = "Usuario"; setText("ana") }
         val clave = EditText(this).apply {

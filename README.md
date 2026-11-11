@@ -7,6 +7,8 @@ Un usuario envía la foto de una célula desde un chat (Android, escritorio o we
 - **Modelo A, malaria** (NIH, 27 558 imágenes, 32×32): parasitada / no infectada. Accuracy de prueba: **95,2 %**.
 - **Modelo B, células sanguíneas** (BloodMNIST, 17 092 imágenes, 28×28): 8 tipos. Accuracy de prueba: **88,6 %**.
 
+**¿Eres del equipo? Empieza por [`GUIA_EQUIPO.md`](GUIA_EQUIPO.md)** (qué hace cada integrante) y descarga el APK y los datasets del [Release v1.0](https://github.com/dodo-UNI-2026-02/BorgAICube/releases/tag/v1.0). El servidor en Google Cloud está en [`NUBE_GCP.md`](NUBE_GCP.md).
+
 Base: el proyecto del compañero (`sem11/anvancePC3`). Se reescribió en Go el nodo IA, cuyo código fuente no venía en el zip; se escribió la app Android, el monitor y las gráficas; y se probó todo. El detalle está en [`PLAN.md`](PLAN.md).
 
 ## Viaje de una consulta
