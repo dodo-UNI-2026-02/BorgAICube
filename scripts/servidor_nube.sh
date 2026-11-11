@@ -4,6 +4,8 @@
 cd "$(dirname "$0")/../codigo/java"
 export CUBO_RABBIT_URL=$(cat ~/cubo-url-local.txt)
 tmux kill-session -t pc3 2>/dev/null
+sudo fuser -k 5000/tcp 6000/tcp 8080/tcp 2>/dev/null  # libera los puertos (p. ej. Open AI Cubes)
+sleep 1
 tmux new-session -d -s pc3 -n backend "CUBO_RABBIT_URL=$CUBO_RABBIT_URL java -Xmx256m -cp 'out:lib/*' cubo.backend.Backend; bash"
 sleep 3
 tmux new-window -t pc3 -n web "java -Xmx128m -cp 'out:lib/*' cubo.web.ServidorHttp --www ../web; bash"

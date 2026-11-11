@@ -8,14 +8,14 @@ laptops y celular ──► 34.176.215.27 :5000 (backend TCP) · :8080 (web) · 
 
 ## 1. Firewall (consola de Google Cloud, una vez)
 ☰ → **Red de VPC → Firewall** → abrir `permitir-open-ai-cubes` → **Editar** → *Protocolos y puertos* → TCP: `5000,6000,8080,5672` → **Guardar**.
-Se mantienen las IP `/32` de cada integrante (cada uno ve la suya en https://api.ipify.org). El día de la exposición se agrega `0.0.0.0/0` y se quita al terminar.
+Rangos de origen: `0.0.0.0/0` (abierto a todos, decisión del equipo). RabbitMQ queda protegido por la clave aleatoria del paso 2; el panel 15672 no se abre. Conviene detener la VM cuando no se use.
 
 ## 2. Preparar la VM (una vez; se puede repetir para actualizar)
 ☰ → **Compute Engine → Instancias de VM** → si está detenida, **Iniciar** → botón **SSH** de `oac-servidor`. En la terminal:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dodo-UNI-2026-02/BorgAICube/main/scripts/nube_preparar_vm.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dodo-UNI-2026-02/BorgAICube/main/scripts/nube_preparar_vm.sh -o preparar.sh && bash preparar.sh
 ```
-El script detiene Open AI Cubes (también usa el puerto 5000); instala RabbitMQ, Java 17, git y tmux; crea el vhost `cubo` y el usuario `cubo` con una clave aleatoria (en `~/cubo-clave.txt`); clona el repo y compila. Al final imprime la URL para los nodos.
+Si la VM recién arrancó, primero espera a que Ubuntu termine sus actualizaciones automáticas. El script detiene Open AI Cubes (puertos 5000 y 6000, aunque se haya lanzado fuera de tmux); instala RabbitMQ, Java 17, git y tmux; crea el vhost `cubo` y el usuario `cubo` con una clave aleatoria (en `~/cubo-clave.txt`); clona el repo y compila. Al final imprime la URL para los nodos.
 
 ## 3. Arrancar el servidor
 ```bash
@@ -49,3 +49,11 @@ Cada base se crea antes con su script de `codigo/sql/`.
 
 ## Memoria y costo
 La e2-micro (1 GB, gratis) alcanza para la demo: RabbitMQ usa como máximo el 30 % de la RAM y el backend y la web están limitados con `-Xmx`. Para la prueba de saturación conviene subirla a **e2-small** solo ese día (*Detener → Editar → Tipo de máquina*, unos 0,02 USD/h) y volver a e2-micro al terminar. Para volver al parcial: `tmux kill-session -t pc3` y arrancar Open AI Cubes como antes.
+
+## Problemas encontrados
+| Síntoma | Causa / solución |
+|---|---|
+| `Could not get lock /var/lib/dpkg/lock-frontend` | Ubuntu se está actualizando al arrancar. El script ya espera hasta 15 min |
+| El script se corta en el paso 3 sin error | Se ejecutó con `curl … \| bash`. Usar `-o preparar.sh && bash preparar.sh` |
+| El cliente se conecta pero se desconecta al instante | Otro proceso (Open AI Cubes) ocupa el 5000: `sudo ss -ltnp \| grep 5000`. `servidor_nube.sh` ya libera los puertos |
+| Un puerto no responde desde fuera (timeout) | Falta en la regla de firewall. Si responde "rechazado", el proceso no está corriendo |
