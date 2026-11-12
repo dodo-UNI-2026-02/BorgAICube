@@ -29,13 +29,13 @@
   <path class="d" d="M210,231 H290"/><path class="d" d="M352,200 V124"/>
   <path class="d" d="M490,124 V150"/>
   <!-- Nodos -->
-  <rect class="caja" x="640" y="30" width="240" height="70" fill="#effaf5" stroke="#1baf7a"/><text class="t" x="655" y="56">Nodos IA ×M (Go)</text><text class="s" x="655" y="76">CNN: conv+ReLU+pool → MLP+Softmax</text><text class="s" x="655" y="92">Linux / Windows</text>
+  <rect class="caja" x="640" y="30" width="240" height="70" fill="#effaf5" stroke="#1baf7a"/><text class="t" x="655" y="56">Nodos IA ×M (Go)</text><text class="s" x="655" y="76">CNN: conv+ReLU+pool → MLP+Softmax</text><text class="s" x="655" y="92">Windows (y Linux en Docker)</text>
   <rect class="caja" x="640" y="130" width="240" height="62"/><text class="t" x="655" y="154">Nodo BD2 (Python)</text><text class="s" x="655" y="174">MariaDB · validación · Windows</text>
-  <rect class="caja" x="640" y="215" width="240" height="62"/><text class="t" x="655" y="239">Nodo BD1 (Python)</text><text class="s" x="655" y="259">PostgreSQL · modelo A · Linux</text>
-  <rect class="caja" x="640" y="300" width="240" height="62"/><text class="t" x="655" y="324">Nodo BD3 (Python)</text><text class="s" x="655" y="344">MySQL · modelo B · Windows/Linux</text>
+  <rect class="caja" x="640" y="215" width="240" height="62"/><text class="t" x="655" y="239">Nodo BD1 (Python)</text><text class="s" x="655" y="259">PostgreSQL · modelo A · Windows</text>
+  <rect class="caja" x="640" y="300" width="240" height="62"/><text class="t" x="655" y="324">Nodo BD3 (Python)</text><text class="s" x="655" y="344">MySQL · modelo B · Windows</text>
   <path class="d" d="M580,175 H610 V65 H640"/><path class="d" d="M580,190 H625 V161 H640"/>
   <path class="d" d="M580,240 H640"/><path class="d" d="M580,285 H610 V331 H640"/>
   <text class="s" x="20" y="410">Clientes ↔ backend: sockets TCP propios, trama [4 bytes longitud][JSON] (sin WebSocket).</text>
   <text class="s" x="20" y="430">Backend ↔ nodos IA y BD: solo RabbitMQ (AMQP), mensajes JSON.</text>
-  <text class="s" x="20" y="450">3 SO (Linux, Windows, Android) · 3 BD (PostgreSQL, MariaDB, MySQL) · 3 lenguajes (Java, Go, Python) + Kotlin.</text>
+  <text class="s" x="20" y="450">3 SO (Linux, Windows, Android) · 3 BD (PostgreSQL, MariaDB, MySQL) · 4 lenguajes (Java, Python, Go, Kotlin).</text>
 </svg>

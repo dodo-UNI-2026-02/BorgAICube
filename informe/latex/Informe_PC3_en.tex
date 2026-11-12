@@ -1,0 +1,906 @@
+\documentclass[10pt,a4paper]{article}
+
+% =========================================================
+% PACKAGES
+% =========================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+\usepackage[expansion=false]{microtype}
+
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codegreen}{rgb}{0,0.5,0}
+\definecolor{codeblue}{rgb}{0,0,0.7}
+
+\lstset{
+    language=Java,
+    basicstyle=\ttfamily\footnotesize,
+    numbers=left,
+    numberstyle=\tiny\color{codegray},
+    numbersep=7pt,
+    tabsize=4,
+    breaklines=true,
+    showstringspaces=false,
+    frame=single,
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codeblue},
+    stringstyle=\color{orange},
+    extendedchars=true,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+
+\setlist[itemize]{noitemsep,topsep=3pt}
+\setlist[enumerate]{noitemsep,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% =========================================================
+% DOCUMENT
+% =========================================================
+\begin{document}
+
+% =========================================================
+% TITLE PAGE
+% =========================================================
+\title{\textbf{Borg IA Cube: a distributed CNN system with a multiplatform chat and RabbitMQ middleware}}
+
+\author{
+Espinoza Benavente Hector \\
+Inga Chávez Jorly \\
+Villanueva Alzamora Farid
+}
+
+\date{}
+\maketitle
+
+\begin{center}
+Universidad Nacional de Ingeniería -- Facultad de Ciencias\\[4pt]
+CC4P1 -- Concurrent and Distributed Programming\\
+Practical Assessment 3 -- 2026-II
+\end{center}
+
+\vspace{10pt}
+\setcounter{tocdepth}{2}
+\tableofcontents
+\newpage
+
+% =========================================================
+% 1. INTRODUCTION
+% =========================================================
+\section{Introduction}
+
+\textit{Borg IA Cube} continues the \textit{Open AI Cubes} concept from the midterm exam: a modular
+system in which each \textquotedblleft{}cube\textquotedblright{} provides one artificial intelligence
+capability. In this assignment the user sends a photo of a cell through a \textbf{chat} (Android,
+desktop or web) and receives the diagnosis of a convolutional neural network (CNN). There are two
+cubes: \textbf{model A} detects malaria (parasitized or uninfected cell) and \textbf{model B}
+classifies 8 types of blood cells.
+
+Unlike the midterm, the nodes no longer talk to each other directly. Clients connect to the
+\textit{backend} with \textbf{custom TCP sockets}, and the backend, the AI nodes and the database nodes
+communicate only through \textbf{RabbitMQ}, which acts as an asynchronous messaging
+\textit{middleware}. The system uses \textbf{three databases with different engines} (PostgreSQL,
+MariaDB and MySQL): two store the results of each model and the third validates clients, products and
+images.
+
+The CNNs are written from scratch in Go, without TensorFlow or PyTorch. The system was deployed with
+the server on \textbf{Google Cloud} and one laptop per team member, each with its database and its AI
+node, connected over the internet from three different homes.
+
+The goals of this work are:
+\begin{itemize}
+    \item Implement a CNN with convolution and MLP \textit{micro chunks}, trained on datasets chosen by
+    the team, in the sequential, parallel, distributed and parallel-distributed configurations.
+    \item Integrate Android, desktop and web clients, a \textit{backend}, AI nodes and three
+    heterogeneous databases through custom sockets and RabbitMQ.
+    \item Keep the databases consistent under concurrent writes.
+    \item Evaluate performance and saturate the system with 1000 transactions per client.
+\end{itemize}
+
+% =========================================================
+% 2. THEORETICAL FRAMEWORK
+% =========================================================
+\section{Theoretical framework}
+
+\subsection{Convolutional neural networks}
+
+A CNN is a deep learning architecture designed for grid-structured data such as images. It has a
+convolutional part, which extracts features, and a multilayer perceptron (MLP), which classifies the
+input from those features.
+
+\subsubsection{Convolution, ReLU and pooling}
+
+A convolution slides small filters (here $3 \times 3$) over the image. Each filter produces an
+activation map that responds to a local pattern, such as an edge or a texture:
+\[
+\mathrm{out}[f][y][x] = b_f + \sum_{c}\sum_{k_y}\sum_{k_x} W_{f,c,k_y,k_x}\;
+\mathrm{in}[c][y+k_y-1][x+k_x-1].
+\]
+The ReLU function, $\max(0,z)$, introduces non-linearity, and $2 \times 2$ \textit{max pooling} halves
+each spatial dimension while keeping the maximum value of each window.
+
+\subsubsection{Multilayer perceptron and softmax}
+
+The final map is flattened into a vector that goes through fully connected layers. The last one
+produces one value per class, which the softmax function turns into probabilities. Training minimizes
+the cross-entropy loss with stochastic gradient descent (SGD) with momentum.
+
+\subsection{Messaging middleware: RabbitMQ}
+
+RabbitMQ is a message broker that implements the AMQP protocol. Producers publish messages to an
+\textit{exchange}, which routes them to queues; consumers read from those queues at their own pace.
+This decouples the stages: if a consumer is slow, messages wait in the queue instead of being lost.
+Three RabbitMQ features are key in this system:
+\begin{itemize}
+    \item \textbf{Load sharing among consumers:} if several nodes consume the same queue, RabbitMQ
+    distributes the messages among them, so AI nodes can be added without changing anything else.
+    \item \textbf{Prefetch and acknowledgement (\textit{ack}):} each consumer receives at most
+    \textit{prefetch} unacknowledged messages at a time. An unacknowledged message is redelivered if
+    the consumer fails.
+    \item \textbf{RPC:} the caller publishes with a reply queue (\texttt{reply\_to}) and an identifier
+    (\texttt{correlation\_id}), and the callee publishes its answer to that queue with the same
+    identifier.
+\end{itemize}
+
+\subsection{Distributed systems and sockets}
+
+A distributed system is made of autonomous processes that communicate over a network to work on a
+common task. Communication with the clients uses TCP \textit{sockets}: each socket is one endpoint of
+a bidirectional channel between two processes, and TCP guarantees reliable, in-order delivery.
+
+\subsection{Concurrency and synchronization}
+
+When several threads access shared data without coordination, a \textit{race condition} occurs: the
+result depends on the non-deterministic order in which the operating system interleaves the threads.
+The tools used to avoid it are:
+\begin{itemize}
+    \item \textbf{Mutual exclusion:} \texttt{ReentrantLock}, \texttt{synchronized} and \texttt{sync.Mutex}.
+    \item \textbf{Concurrent structures:} \texttt{ConcurrentHashMap}, \texttt{LinkedBlockingQueue} and
+    atomic counters.
+    \item \textbf{Producer--consumer:} blocking queues and Go channels.
+    \item \textbf{Barriers:} a group of tasks waits until all of them finish before continuing
+    (\texttt{sync.WaitGroup}).
+    \item \textbf{Thread-local state:} each thread works on its own copy of the data (for example,
+    its own gradient buffer), and the copies are combined at the end.
+\end{itemize}
+
+\subsection{Database transactions}
+
+A transaction groups several operations that are applied all together or not at all (atomicity). To
+prevent two concurrent transactions from reading the same value and overwriting each other,
+\texttt{SELECT ... FOR UPDATE} locks the row until the transaction ends. An \textbf{idempotent} insert
+(\texttt{ON CONFLICT DO NOTHING} in PostgreSQL, \texttt{INSERT IGNORE} in MySQL and MariaDB) does not
+duplicate the record if the same message arrives twice.
+
+\subsection{Performance}
+
+The metrics used are:
+\begin{itemize}
+    \item \textbf{Latency:} time between a client sending a query and receiving the answer.
+    \item \textbf{Throughput:} transactions processed per second.
+    \item \textbf{Speedup:} $S = T_{\text{sequential}} / T$.
+    \item \textbf{Parallelization cost:} the time that is not useful computation (sending data,
+    waiting and combining results). It is what keeps $S$ from growing linearly.
+\end{itemize}
+
+% =========================================================
+% 3. METHODOLOGY AND IMPLEMENTATION
+% =========================================================
+\section{Methodology and implementation}
+
+\subsection{System architecture}
+
+Figure~\ref{fig:arquitectura} shows the architecture. Clients and nodes always open the connection to
+the server: clients to the backend (port 5000) or to the web server (port 8080), and nodes to RabbitMQ
+(port 5672). Therefore no ports had to be opened in the team members' homes.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.98\textwidth]{img_en/arquitectura.png}
+    \caption{Borg IA Cube architecture: clients, central server with RabbitMQ, AI nodes and database nodes.}
+    \label{fig:arquitectura}
+\end{figure}
+
+\subsubsection{Modules}
+
+\begin{itemize}
+    \item \textbf{Clients:} an Android app in Kotlin (Figure~\ref{fig:android}), a Java Swing desktop
+    chat with a terminal version, and an HTML/JS web chat. All three can log in, register, send an
+    image, view the history and launch a stress test.
+    \item \textbf{Web server:} a custom HTTP server built with Java's \texttt{ServerSocket}. It serves
+    the web chat and forwards every browser action to the backend over TCP. It does not use WebSocket.
+    \item \textbf{Backend:} receives the three clients, validates users against BD2, routes the images
+    to RabbitMQ and sends each answer back to the right client.
+    \item \textbf{AI nodes:} run the CNN on the images of \texttt{cola\_modeloA} and
+    \texttt{cola\_modeloB}, and serve the distributed training tasks.
+    \item \textbf{DB nodes:} BD2 validates; BD1 and BD3 store the results of models A and B.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[height=8.5cm]{img_en/android_chat.png}\hspace{1cm}
+    \includegraphics[height=8.5cm]{img_en/android_estres.png}
+    \caption{Android app (Spanish interface). Left: diagnosis of a parasitized cell (99.8\,\%) and
+    history. Right: stress test of 1000 images against the server on Google Cloud, with no errors.}
+    \label{fig:android}
+\end{figure}
+
+\subsubsection{Code components}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{>{\ttfamily}p{4.4cm}Y}
+\toprule
+\textnormal{\textbf{Component}} & \textbf{Responsibility} \\
+\midrule
+java/src/cubo/backend & \texttt{Backend}, \texttt{ManejadorCliente}, \texttt{PuenteRabbit} (topology, publisher and RPC), \texttt{Correlador} and \texttt{Sesion}. \\
+java/src/cubo/web & Custom HTTP server (\texttt{ServidorHttp}, \texttt{PeticionHttp}, \texttt{RespuestaHttp}). \\
+java/src/cubo/desktop & Swing chat (\texttt{ClienteDesktop}) and terminal chat (\texttt{ClienteTerminal}). \\
+java/src/cubo/carga & \texttt{GeneradorCarga}: queries or registrations with a random \textit{delay}. \\
+go/cnn & CNN, backpropagation, dataset, preprocessing and parallel training. \\
+go/distrib, go/rmq & Distributed training over RabbitMQ; topology, heartbeat and metrics. \\
+go/cmd/nodo, go/cmd/entrenar & AI node and training in the 4 configurations. \\
+python/ & \texttt{nodo\_bd.py} (BD1, BD2, BD3), \texttt{validador.py}, \texttt{monitor.py}, \texttt{verificar\_consistencia.py}. \\
+android/ & \texttt{Conexion.kt} (socket and protocol) and \texttt{MainActivity.kt}. \\
+sql/ & Creation scripts for BD1, BD2 and BD3. \\
+\bottomrule
+\end{tabularx}
+\caption{Main components of the implementation.}
+\label{tab:componentes}
+\end{table}
+
+\subsection{AI models and micro chunks}
+
+\subsubsection{Datasets}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3cm}YY}
+\toprule
+ & \textbf{Model A: malaria} & \textbf{Model B: blood cells} \\
+\midrule
+Source & NIH, \textit{Malaria Cell Images}~\cite{malaria} & BloodMNIST, from MedMNIST v2~\cite{medmnist}, derived from~\cite{acevedo} \\
+Images & 27\,558 (13\,779 per class) & 17\,092 \\
+Classes & parasitized, uninfected & basophil, eosinophil, erythroblast, immature granulocyte, lymphocyte, monocyte, neutrophil, platelet \\
+Split & 22\,046 / 2\,754 / 2\,758 (80/10/10, stratified) & 11\,959 / 1\,712 / 3\,421 (official split) \\
+Preprocessing & Black padding to a square, bilinear resizing to $32 \times 32$, RGB & $28 \times 28$ RGB images \\
+\bottomrule
+\end{tabularx}
+\caption{Datasets chosen by the team (training / validation / test).}
+\label{tab:datasets}
+\end{table}
+
+The datasets are stored in a custom binary format: a \texttt{DSET} header with $N$, $C$, $H$, $W$ and
+$K$, and for each image \texttt{[split][label][C$\times$H$\times$W bytes]}. Each channel is normalized
+with the mean and standard deviation of the training set. The AI node applies the same padding,
+resizing and normalization to the photos that arrive through the chat.
+
+\subsubsection{Network architecture}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lllll}
+\toprule
+\textbf{Micro chunk} & \textbf{Layer} & \textbf{Input (A)} & \textbf{Output (A)} & \textbf{Detail} \\
+\midrule
+Convolutions & conv1 + ReLU & $3 \times 32 \times 32$ & $8 \times 32 \times 32$ & $3 \times 3$ filter, padding 1 \\
+ & pool1 & $8 \times 32 \times 32$ & $8 \times 16 \times 16$ & $2 \times 2$ max \\
+ & conv2 + ReLU & $8 \times 16 \times 16$ & $16 \times 16 \times 16$ & $3 \times 3$ filter, padding 1 \\
+ & pool2 & $16 \times 16 \times 16$ & $16 \times 8 \times 8$ & $2 \times 2$ max \\
+MLP & fc1 + ReLU & 1\,024 & 64 & fully connected \\
+ & fc2 + softmax & 64 & $K$ & one output per class \\
+\bottomrule
+\end{tabular}
+\caption{CNN layers: 67\,122 weights in model A and 52\,152 in model B.}
+\label{tab:cnn}
+\end{table}
+
+Backpropagation was written by hand. An automated test (\texttt{go test ./cnn}) compares the
+analytical gradient with the numerical one on random weights.
+
+\subsubsection{Parallel training: one buffer per thread and one barrier per batch}
+
+Each batch of 32 images is split among $H$ goroutines. Each one accumulates the gradient in \emph{its
+own} buffer, so there are no shared writes and no race condition. A \texttt{sync.WaitGroup} acts as the
+barrier, and then the buffers are added and the weights are updated:
+
+\begin{lstlisting}[language={}]
+func (e *Entrenador) Paso(d *Dataset, lote []int) (perdida float64, aciertos int) {
+    var wg sync.WaitGroup
+    for h := 0; h < e.Hilos; h++ {
+        wg.Add(1)
+        go func(h int) {
+            defer wg.Done()
+            g := e.grads[h]                            // the goroutine's own buffer
+            for j := h; j < len(lote); j += e.Hilos {  // interleaved split of the batch
+                e.Red.Muestra(d, lote[j], e.xs[h])
+                e.Red.Gradiente(e.trabajos[h], e.xs[h], int(d.Etiq[lote[j]]), g)
+            }
+        }(h)
+    }
+    wg.Wait()   // barrier: every goroutine finished its share of the batch
+    // the H buffers are added and SGD with momentum is applied
+    ...
+}
+\end{lstlisting}
+
+\subsubsection{Distributed training: model averaging over RabbitMQ}
+
+The coordinator (\texttt{entrenar -modo dist}) publishes one task per node to
+\texttt{cola\_entrenamiento}, with the current weights and the images assigned to that node. Each AI
+node runs 10 SGD steps on its share, with 1 thread (\textit{dist}) or with all its cores
+(\textit{pardist}), and returns its weights to the coordinator's private queue. The coordinator
+averages them, weighted by the number of images, and starts the next round.
+
+\subsection{Communication protocol}
+\label{sec:protocolo}
+
+\subsubsection{Clients and backend: custom TCP sockets}
+
+Each message is a frame \texttt{[4 bytes with the length N, big-endian][N bytes of UTF-8 JSON]}. The
+JSON is built and parsed by hand. A query carries \texttt{idCliente}, \texttt{tipoConsulta}, the image
+in Base64 (\texttt{payload}) and \texttt{timestamp}:
+
+\begin{lstlisting}[language={},numbers=none]
+-> {"tipo":"CONSULTA","token":"9f1c...","idCliente":1,"tipoConsulta":"IMAGEN","modelo":"A",
+    "formato":"png","payload":"iVBORw0KGgo...","timestamp":1794367427500}
+<- {"tipo":"ACK","idSolicitud":"5e0b...","estado":"EN_COLA"}
+<- {"tipo":"RESULTADO","idSolicitud":"5e0b...","etiqueta":"parasitada","probabilidad":0.998,
+    "nodoIA":"ia-integrante02-...","latenciaTotalMs":1404}
+\end{lstlisting}
+
+\subsubsection{Backend and nodes: RabbitMQ queues}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{>{\ttfamily}p{4.3cm}p{3.2cm}Y}
+\toprule
+\textnormal{\textbf{Queue}} & \textbf{Consumer} & \textbf{Content} \\
+\midrule
+cola\_modeloA / B & AI nodes & \texttt{idSolicitud}, image, \texttt{modeloDestino}, \texttt{timestamp} \\
+cola\_resultadosA / B & BD1 / BD3 & The above plus label, probabilities and AI node \\
+cola\_validacion & BD2 & RPC validations: login, registration, request and image \\
+cola\_respuestas & Backend & Final result of each \texttt{idSolicitud} \\
+cola\_historialA / B & BD1 / BD3 & User history queries (RPC) \\
+cola\_entrenamiento & AI nodes & Distributed training tasks \\
+cola\_heartbeat, cola\_logs, cola\_metricas & Backend, monitor & Control: live nodes, logs, CPU and memory \\
+\bottomrule
+\end{tabularx}
+\caption{RabbitMQ queues (exchanges \texttt{ex\_cubo} and \texttt{ex\_control}).}
+\label{tab:colas}
+\end{table}
+
+\subsubsection{Protocol diagram}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{img_en/protocolo.png}
+    \caption{Flow of one query: Client $\rightarrow$ Backend $\rightarrow$ RabbitMQ $\rightarrow$ AI
+    node $\rightarrow$ RabbitMQ $\rightarrow$ DB node $\rightarrow$ RabbitMQ $\rightarrow$ Backend
+    $\rightarrow$ Client.}
+    \label{fig:protocolo}
+\end{figure}
+
+BD2 validates each query twice: before the AI (active client, enabled model, format and quota) and
+before storing (image rules and blocked \textit{hash}). The backend uses the \texttt{Correlador} to
+know which socket each result goes to. Its \texttt{remove} on a \texttt{ConcurrentHashMap} is atomic:
+if the answer and the \textit{timeout} arrive at the same time, only one of them
+\textquotedblleft{}wins\textquotedblright{} and the client receives a single message.
+
+\subsection{Heterogeneous databases}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.1cm}p{1.9cm}Yp{4.2cm}}
+\toprule
+\textbf{DB} & \textbf{Engine} & \textbf{Tables} & \textbf{Role} \\
+\midrule
+BD1 & PostgreSQL 16 & \texttt{imagenes}, \texttt{resultados}, \texttt{historial\_consultas}, \texttt{metricas\_entrenamiento} & Model A: metadata, label, probability, date and history \\
+BD2 & MariaDB 11 & \texttt{clientes}, \texttt{modelos}, \texttt{cliente\_modelo}, \texttt{reglas\_imagen}, \texttt{imagenes\_bloqueadas}, \texttt{auditoria\_validaciones} & Validation of the client, the product (model) and the image \\
+BD3 & MySQL 8 & Same as BD1 & Model B \\
+\bottomrule
+\end{tabularx}
+\caption{Databases. The creation scripts are in \texttt{sql/}.}
+\label{tab:bd}
+\end{table}
+
+Each DB node handles messages with a thread \textit{pool} and \textbf{one connection per thread},
+never shared. Image, result and history are stored in a single transaction, and the client's daily
+quota is consumed with \texttt{FOR UPDATE}:
+
+\begin{lstlisting}[language=Python]
+def _solicitud(cur, msg):
+    """Validates active client, enabled model, format/size and consumes quota (with FOR UPDATE)."""
+    cur.execute("SELECT estado, cuota_diaria, usadas_hoy, fecha_cuota < CURDATE() FROM clientes "
+                "WHERE id_cliente = %s FOR UPDATE", (id_cliente,))
+    ...
+    cur.execute("UPDATE clientes SET usadas_hoy = %s, fecha_cuota = CURDATE() WHERE id_cliente = %s",
+                (usadas + 1, id_cliente))
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{Yp{4cm}}
+\toprule
+\textbf{Concurrency test (\texttt{pruebas\_concurrencia.py})} & \textbf{Result} \\
+\midrule
+20 threads insert the same \texttt{id\_solicitud} into BD1 and BD3 & 1 row per table \\
+50 threads request validation for a client with a quota of 10 in BD2 & exactly 10 approved \\
+20 threads register the same new user in BD2 & exactly 1 created \\
+\bottomrule
+\end{tabularx}
+\caption{Concurrent write tests on the real databases.}
+\label{tab:pruebas_bd}
+\end{table}
+
+\subsection{Concurrency concepts in the code}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3.3cm}Y}
+\toprule
+\textbf{Component} & \textbf{Threads and synchronization} \\
+\midrule
+Backend (Java) & One thread per connection (\texttt{CachedThreadPool}) and a fixed \textit{pool} for queries. Each session writes to its socket with a \texttt{ReentrantLock}, so frames never interleave. \texttt{ConcurrentHashMap} for sessions and pending requests; publications go through a \texttt{LinkedBlockingQueue} drained by a single publisher thread. Counters with \texttt{AtomicLong}. \\
+HTTP server (Java) & \textit{Pool} of 128 threads; \texttt{ConcurrentHashMap} of web sessions. \\
+AI node (Go) & Producer--consumer: RabbitMQ delivers up to $H$ messages (\textit{prefetch}) and $H$ goroutines read them from a Go channel. Publisher protected with \texttt{sync.Mutex}; \texttt{atomic.Int64} counters. \\
+DB nodes (Python) & \texttt{ThreadPoolExecutor}, one connection per thread, transactions, \texttt{FOR UPDATE}, idempotent inserts and \texttt{threading.Lock} for the counters. \\
+Android (Kotlin) & Reader thread, \textit{ping} thread and socket writes inside \texttt{synchronized}; the UI is only touched from \texttt{runOnUiThread}. \\
+\bottomrule
+\end{tabularx}
+\caption{Concurrency in each component.}
+\label{tab:conceptos}
+\end{table}
+
+\subsection{Deployment}
+
+\subsubsection{Team cluster}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{2.6cm}XXX}
+\toprule
+ & \textbf{Member01 (Farid)} & \textbf{Member02 (Hector)} & \textbf{Member03 (Jorly)} \\
+\midrule
+Database & BD2 -- MariaDB & BD1 -- PostgreSQL & BD3 -- MySQL \\
+Nodes & BD2 (Python) + AI (Go) & BD1 (Python) + AI (Go) + load & BD3 (Python) + AI (Go) \\
+Processor & Intel Core i7-1255U & Intel Core i5-13420H & AMD Ryzen 5 5500U \\
+Cores / threads & 10 / 12 & 8 / 12 & 6 / 12 \\
+RAM & 16 GB & 32 GB & 16 GB \\
+Operating system & Windows 11 & Windows 11 (DB and AI in Docker) & Windows \\
+\bottomrule
+\end{tabularx}
+\caption{Cluster laptops, each connected from a different home network.}
+\label{tab:montaje}
+\end{table}
+
+The mobile client runs on an Android phone. The system therefore uses \textbf{3 operating systems}
+(Linux on the server, Windows on the laptops and Android on the phone), \textbf{3 database engines} on
+3 independent nodes and \textbf{4 languages}: Java on the server, Python on the DB nodes, Go on the AI
+nodes and Kotlin on the mobile client. On Member02's laptop, Windows does not allow unsigned binaries
+to run, so its database and its AI node run in Docker containers.
+
+\subsubsection{Server on Google Cloud}
+
+The server runs on the same virtual machine as in the midterm: \texttt{oac-servidor}, an
+\texttt{e2-micro} instance with Ubuntu 24.04 LTS in the \texttt{southamerica-west1} region (Santiago,
+Chile), with a static IP. It runs RabbitMQ, the backend and the web server. A firewall rule opens TCP
+ports 5000, 8080 and 5672. The machine is prepared over SSH with \texttt{scripts/nube\_preparar\_vm.sh},
+which installs RabbitMQ and Java, creates the RabbitMQ user with a random password and compiles the
+project. The backend and the web server run inside \texttt{tmux}, so they keep running after the SSH
+session is closed (Figures~\ref{fig:gcp_servidor} and~\ref{fig:gcp_puertos}).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{img_en/gcp_servidor.png}
+    \caption{Starting the server on the Google Cloud VM over SSH from the browser.}
+    \label{fig:gcp_servidor}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{img_en/gcp_puertos.png}
+    \caption{Processes listening on the VM: RabbitMQ (5672), backend (5000) and web server (8080).}
+    \label{fig:gcp_puertos}
+\end{figure}
+
+\subsection{Experimental design}
+
+The measurements were made on 2026-11-11 with the real cluster. The load and the training coordinator
+were launched from Member02's laptop. To change configuration, only the AI nodes were restarted with
+different parameters:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3.2cm}p{4.2cm}Y}
+\toprule
+\textbf{Configuration} & \textbf{AI nodes} & \textbf{Experiments} \\
+\midrule
+Sequential & 1 node, 1 core and 1 thread & Inference; training of A and B \\
+Parallel & 1 node, 12 threads & Inference; training of A and B \\
+Distributed & 3 laptops, 1 thread each & Inference; training of A and B \\
+Parallel distributed & 3 laptops, 12 threads each & Inference; training of A and B; saturation; 1000 registrations \\
+\bottomrule
+\end{tabularx}
+\caption{Measured configurations.}
+\label{tab:configuraciones}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{Training:} 3 epochs, batch size 32, SGD with $\eta = 0.01$ and momentum 0.9, the
+    same seed in every run.
+    \item \textbf{Inference:} 1000 queries from the desktop client and 1000 from the web client at the
+    same time, with 32 sessions and a random \textit{delay} of 0 to 50 ms between sends.
+    \item \textbf{Saturation:} desktop, web and Android, 1000 transactions each, at the same time.
+    \item \textbf{Instrumentation:} \texttt{monitor.py} records every 0.5 s the depth of the RabbitMQ
+    queues and the CPU and memory reported by each node. Everything is stored in CSV files, from which
+    the charts are generated.
+\end{itemize}
+
+% =========================================================
+% 4. RESULTS AND DISCUSSION
+% =========================================================
+\section{Results and discussion}
+
+\subsection{Model metrics}
+
+The delivered models were trained for 12 epochs in parallel mode.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Model} & \textbf{Training acc.} & \textbf{Validation acc.} & \textbf{Test acc.} \\
+\midrule
+A (malaria) & 97.3\,\% & 96.6\,\% & 95.2\,\% \\
+B (blood cells) & 94.4\,\% & 90.0\,\% & 88.6\,\% \\
+\bottomrule
+\end{tabular}
+\caption{Accuracy of the delivered models.}
+\label{tab:modelos}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{img_en/2_curvas_modelo_A.png}
+    \includegraphics[width=0.9\textwidth]{img_en/2_curvas_modelo_B.png}
+    \caption{Loss and accuracy per epoch of models A and B.}
+    \label{fig:curvas}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[height=5.2cm]{img_en/3_confusion_modelo_A.png}\hspace{0.5cm}
+    \includegraphics[height=7cm]{img_en/3_confusion_modelo_B.png}
+    \caption{Confusion matrices on the test set.}
+    \label{fig:confusion}
+\end{figure}
+
+In model B, most errors confuse immature granulocytes with monocytes and neutrophils, which are
+morphologically similar. Platelets and eosinophils are almost never confused.
+
+\subsection{Training in the 4 configurations}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrrr}
+\toprule
+ & & \multicolumn{3}{c}{\textbf{Model A}} & \multicolumn{3}{c}{\textbf{Model B}} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+\textbf{Configuration} & \textbf{Mach. $\times$ threads} & \textbf{s/epoch} & \textbf{Speedup} & \textbf{Acc.} & \textbf{s/epoch} & \textbf{Speedup} & \textbf{Acc.} \\
+\midrule
+Sequential & $1 \times 1$ & 38.4 & 1.00 & 95.3\,\% & 16.6 & 1.00 & 83.7\,\% \\
+Parallel & $1 \times 12$ & 6.4 & 6.00 & 95.0\,\% & 2.8 & 5.88 & 83.9\,\% \\
+Distributed & $3 \times 1$ & 56.3 & 0.68 & 82.3\,\% & 26.3 & 0.63 & 80.2\,\% \\
+Parallel distributed & $3 \times 12$ & 30.1 & 1.27 & 83.4\,\% & 16.6 & 1.00 & 80.6\,\% \\
+\bottomrule
+\end{tabular}
+\caption{Training on the real cluster (3 epochs). Speedup relative to sequential.}
+\label{tab:entrenamiento}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img_en/1_entrenamiento_tiempo_speedup.png}
+    \caption{Time per epoch and training speedup.}
+    \label{fig:entrenamiento}
+\end{figure}
+
+On a single machine, parallel training is 6 times faster. Distributed over the internet, however, it
+is \textbf{slower than sequential}. In each round of 10 steps, every laptop receives and returns the
+full model (about 270 KB) through the server in Santiago, and that communication cost outweighs what
+is gained by splitting the computation. Parallel distributed training partly compensates for it,
+because each node computes its round with 12 threads. For reference, in an earlier test without a
+network (3 containers on a single laptop), distributed $3 \times 1$ did speed up by $3.4\times$ and
+parallel distributed by $5.7\times$. Accuracy drops to 80--83\,\% because each node sees one third of
+the data between averages and there are only 3 epochs.
+
+\subsection{Inference in the 4 configurations}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{llrrrr}
+\toprule
+\textbf{Configuration} & \textbf{Nodes $\times$ cores} & \textbf{Throughput} & \textbf{Mean latency} & \textbf{Max. queue A / B} & \textbf{Errors} \\
+\midrule
+Sequential & $1 \times 1$ & 33.2 tx/s & 12\,839 ms & 418 / 380 & 0 \\
+Parallel & $1 \times 12$ & 52.5 tx/s & 1\,412 ms & 0 / 0 & 0 \\
+Distributed & $3 \times 1$ & 43.5 tx/s & 1\,699 ms & 1 / 3 & 0 \\
+Parallel distributed & $3 \times 12$ & 54.1 tx/s & 1\,367 ms & 0 / 0 & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Inference: 2000 queries per configuration (1000 from desktop and 1000 from web). The fifth
+column is the maximum number of messages waiting in \texttt{cola\_modeloA} and \texttt{cola\_modeloB}.}
+\label{tab:inferencia}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.54\textwidth]{img_en/4_throughput_vs_configuracion.png}
+    \includegraphics[width=0.44\textwidth]{img_en/5_latencia_vs_nodos.png}
+    \caption{Throughput vs. configuration (left) and latency vs. number of AI nodes (right).}
+    \label{fig:inferencia}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{img_en/7b_rabbitmq_colas_secuencial.png}
+    \caption{RabbitMQ queues with a single 1-core AI node: the model messages pile up.}
+    \label{fig:colas_seq}
+\end{figure}
+
+In sequential mode, \texttt{cola\_modeloA/B} reaches about 400 waiting messages and latency rises to
+12.8 s (Figure~\ref{fig:colas_seq}). However, the AI node uses only about 20\,\% of its core: with 1
+thread, RabbitMQ delivers one message at a time (\textit{prefetch} 1), and each message waits for a
+round trip to Santiago before the next one. With 12 threads or with 3 nodes, several messages travel at
+once, the model queues stay empty and latency drops almost 10 times. From there on the limit is no
+longer the AI: what waits the most is \texttt{cola\_validacion} (up to 48 messages), because BD2
+validates each query twice from Member01's home. That is why throughput levels off at 52--54
+transactions per second.
+
+\subsection{Saturation test}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Client} & \textbf{Transactions} & \textbf{OK} & \textbf{Errors} & \textbf{Mean latency} & \textbf{p95} & \textbf{Throughput} \\
+\midrule
+Desktop & 1\,000 & 1\,000 & 0\,\% & 2\,107 ms & 3\,498 ms & 16.7 tx/s \\
+Web & 1\,000 & 1\,000 & 0\,\% & 2\,116 ms & 3\,449 ms & 16.6 tx/s \\
+Android & 1\,000 & 1\,000 & 0\,\% & 2\,590 ms & -- & 32.0 tx/s \\
+\bottomrule
+\end{tabular}
+\caption{Saturation with the three clients at the same time and the 3 AI nodes.}
+\label{tab:saturacion}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{img_en/6_saturacion_latencia_errores.png}
+    \caption{Latency and throughput per client during saturation.}
+    \label{fig:saturacion}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{img_en/7_rabbitmq_colas_bajo_carga.png}
+    \caption{RabbitMQ under load: pending messages per queue during saturation.}
+    \label{fig:colas_sat}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img_en/8_cpu_memoria_por_nodo.png}
+    \caption{CPU (as a percentage of all the cores of each machine) and memory of each node during saturation.}
+    \label{fig:cpu}
+\end{figure}
+
+All 3000 transactions were answered without errors. With the 3 AI nodes, the model queues do not grow;
+what fluctuates is \texttt{cola\_validacion} (at most 38 messages), which empties as soon as the burst
+drops. No node exceeds 10\,\% CPU: the system is limited by network latency, not by computation. The
+Android values are the ones the app showed at the end (Figure~\ref{fig:android}); its CSV was
+overwritten by a later run without a connection, so there is no p95. A first attempt from another
+phone ended with 0/1000 because the app had lost its connection before starting; those queries never
+left the phone.
+
+\subsection{1000 registrations and database validation}
+
+The load generator registered 1000 new random clients: 1000 OK, 116 ms mean latency and 54
+registrations per second. At the end, \texttt{verificar\_consistencia.py} cross-checked the three
+databases through RabbitMQ:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{Yr}
+\toprule
+\textbf{Check} & \textbf{Value} \\
+\midrule
+Results in BD1 (PostgreSQL, Member02) / BD3 (MySQL, Member03) & 5\,835 / 6\,473 \\
+Valid image validations in BD2 (MariaDB, Member01) & 12\,308 \\
+Results without validation in BD2 / in both BD1 and BD3 / duplicates & 0 / 0 / 0 \\
+Queries reported OK to the client without a stored result & 0 \\
+Clients in BD2 (1\,004 initial + 1\,000 registered) & 2\,004 \\
+\midrule
+\textbf{Result} & \textbf{consistent} \\
+\bottomrule
+\end{tabularx}
+\caption{Cross-validation of BD1, BD2 and BD3 at the end of the tests.}
+\label{tab:consistencia}
+\end{table}
+
+\subsection{General discussion}
+
+The results show that parallelism works on a single machine, both for training (6 times faster) and
+for serving queries (almost 10 times lower latency). Distribution over the internet, on the other hand,
+does not speed up training: the cost of sending the model in every round exceeds the cost of the
+computation. This is the parallelization cost studied in the course; to take advantage of distribution,
+it would be advisable to synchronize less often or to have the nodes on a local network. In inference,
+RabbitMQ shows where the bottleneck is at each moment: first in the AI nodes and, as threads and nodes
+are added, in the BD2 validation.
+
+The limits of the measurements should also be considered: one run was made per configuration, over
+variable home networks, with laptops with different processors, and the load was launched from a laptop
+that was also running BD1 and an AI node. The figures describe the behavior of the complete system
+rather than a \textit{microbenchmark} under identical conditions.
+
+% =========================================================
+% 5. CONCLUSIONS
+% =========================================================
+\section{Conclusions}
+
+\begin{itemize}
+    \item A distributed system was implemented with Android, desktop and web clients, a backend with
+    custom sockets, RabbitMQ as the only \textit{middleware}, AI nodes in Go and three heterogeneous
+    databases. It worked end to end with the server on Google Cloud and three laptops in three homes.
+    \item The CNNs written from scratch, with convolution and MLP \textit{micro chunks}, reach 95.2\,\%
+    on malaria and 88.6\,\% on 8 types of blood cells.
+    \item On a single machine, parallel training is 6 times faster. Distributed over the internet it is
+    slower than sequential, because communication weighs more than computation; without a network, the
+    same scheme speeds up 3.4 times with 3 nodes.
+    \item In inference, going from 1 thread to several threads or nodes lowers latency almost 10 times;
+    after that, the bottleneck moves to the BD2 validation.
+    \item The system answered 11\,000 transactions without errors, including the saturation with the
+    three clients at the same time. Transactions, \texttt{FOR UPDATE}, idempotent inserts and one
+    connection per thread kept the three databases consistent.
+\end{itemize}
+
+% =========================================================
+% 6. SOURCE CODE APPENDIX
+% =========================================================
+\section{Source code appendix}
+
+The complete source code is included in the ZIP file submitted with this report and in the repository
+\url{https://github.com/dodo-UNI-2026-02/BorgAICube}. The main files are:
+\begin{itemize}
+    \item \texttt{codigo/java/src/cubo/}: backend, web server, desktop clients and load generator.
+    \item \texttt{codigo/go/}: CNN, AI node and training in the 4 configurations.
+    \item \texttt{codigo/python/}: DB nodes, validator, monitor, consistency check and charts.
+    \item \texttt{codigo/android/}: Android app.
+    \item \texttt{codigo/web/}: web chat.
+    \item \texttt{codigo/sql/}: creation scripts for BD1, BD2 and BD3.
+\end{itemize}
+
+% =========================================================
+% 7. DOCUMENTATION APPENDIX
+% =========================================================
+\section{Documentation appendix}
+
+\subsection*{Requirements}
+
+\begin{itemize}
+    \item Java 17 or later, Go 1.24 or later and Python 3.10 or later (with \texttt{pika},
+    \texttt{psycopg2} and \texttt{pymysql}).
+    \item RabbitMQ, and on each DB node its engine: PostgreSQL, MariaDB or MySQL.
+    \item Android Studio, only to build the app.
+\end{itemize}
+
+\subsection*{Server (on Google Cloud)}
+
+\begin{lstlisting}[language={},numbers=none]
+curl -fsSL https://raw.githubusercontent.com/dodo-UNI-2026-02/BorgAICube/main/scripts/nube_preparar_vm.sh -o preparar.sh && bash preparar.sh
+bash ~/BorgAICube/scripts/servidor_nube.sh
+\end{lstlisting}
+
+\subsection*{Nodes (on each laptop)}
+
+\begin{lstlisting}[language={},numbers=none]
+$env:CUBO_RABBIT_URL = "amqp://cubo:PASSWORD@34.176.215.27:5672/cubo"
+python codigo\python\nodo_bd.py --rol BD2 --db-host 127.0.0.1     (BD1 or BD3 depending on the laptop)
+.\nodo.exe -datos datos
+\end{lstlisting}
+
+\subsection*{Clients}
+
+\begin{lstlisting}[language={},numbers=none]
+java -cp "codigo/java/out;codigo/java/lib/*" cubo.desktop.ClienteDesktop --host 34.176.215.27
+http://34.176.215.27:8080
+\end{lstlisting}
+
+\subsection*{Measurements}
+
+\begin{lstlisting}[language={},numbers=none]
+./scripts/equipo.sh seq | par | entrenar_local | pardist | entrenar_dist | saturacion | registros | dist | validar
+python codigo/python/graficas.py --resultados resultados/equipo [--en]
+\end{lstlisting}
+
+The results are stored as CSV files in the \texttt{resultados/equipo/} folder, and the charts as PNG
+files in its \texttt{graficas/} subfolder (\texttt{graficas\_en/} for the English version).
+
+% =========================================================
+% BIBLIOGRAPHY
+% =========================================================
+\newpage
+\begin{thebibliography}{9}
+
+\bibitem{enunciado}
+CC4P1 -- Programación Concurrente y Distribuida.
+\textit{Práctica 03 2026-II: Sistema distribuido de CNN con chat multiplataforma y middleware RabbitMQ}.
+Universidad Nacional de Ingeniería.
+
+\bibitem{malaria}
+S. Rajaraman et al.
+\textit{Pre-trained convolutional neural networks as feature extractors toward improved malaria parasite detection in thin blood smear images}.
+PeerJ, 6:e4568, 2018. Dataset: National Library of Medicine (NIH).
+
+\bibitem{medmnist}
+J. Yang et al.
+\textit{MedMNIST v2: A large-scale lightweight benchmark for 2D and 3D biomedical image classification}.
+Scientific Data, 10:41, 2023.
+
+\bibitem{acevedo}
+A. Acevedo et al.
+\textit{A dataset of microscopic peripheral blood cell images for development of automatic recognition systems}.
+Data in Brief, 30:105474, 2020.
+
+\bibitem{rabbitmq}
+RabbitMQ.
+\textit{RabbitMQ documentation: queues, consumer prefetch and RPC}.
+\url{https://www.rabbitmq.com/docs}.
+
+\bibitem{distribuidos}
+CC4P1 course material.
+\textit{Desafío de los Sistemas Distribuidos}.
+
+\bibitem{hilos}
+CC4P1 course material.
+\textit{Monitores, condición de carrera y thread-safe (Hilos\_v12)}.
+
+\bibitem{desempeno}
+CC4P1 course material.
+\textit{Desempeño y optimización para la latencia (Desempeño251\_v03)}.
+
+\bibitem{gcp}
+Google Cloud.
+\textit{Compute Engine documentation}.
+\url{https://cloud.google.com/compute/docs}.
+
+\end{thebibliography}
+
+\end{document}

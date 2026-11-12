@@ -14,3 +14,9 @@ entrega/
 resultados/logs/
 *.exe
 datos/tmp.gob
+
+# LaTeX auxiliares
+*.aux
+*.log
+*.toc
+*.out

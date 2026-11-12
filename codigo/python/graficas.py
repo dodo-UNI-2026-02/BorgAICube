@@ -1,7 +1,10 @@
-"""Gráficas de la PC3 a partir de los CSV de resultados/ (matplotlib).
+"""Gráficas de la PC3 a partir de los CSV de una carpeta de resultados (matplotlib).
 
-  python graficas.py            → resultados/graficas/*.png
+  python graficas.py                                   → resultados/graficas/*.png
+  python graficas.py --resultados resultados/equipo    → resultados/equipo/graficas/*.png
+  python graficas.py --resultados resultados/equipo --en  → mismas gráficas en inglés (graficas_en/)
 """
+import argparse
 import csv
 import glob
 import os
@@ -12,8 +15,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-R = os.path.join(os.path.dirname(__file__), "..", "..", "resultados")
-G = os.path.join(R, "graficas")
+BASE = os.path.join(os.path.dirname(__file__), "..", "..", "resultados")
+R, G, MODELOS = BASE, os.path.join(BASE, "graficas"), os.path.join(BASE, "modelos")
+# nombre de máquina → integrante (para las etiquetas de los nodos)
+ALIAS = {"DESKTOP-FMBHKTR": "Integrante01", "DESKTOP-SCUO763": "Integrante02", "integrante02": "Integrante02",
+         "Jinga": "Integrante03"}
 SERIE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]  # orden fijo
 TINTA, TINTA2, REJILLA = "#1f1f1e", "#5f5e5a", "#e4e3df"
 plt.rcParams.update({"font.size": 10, "axes.edgecolor": REJILLA, "axes.labelcolor": TINTA2, "xtick.color": TINTA2,
@@ -27,7 +33,40 @@ def leer(ruta):
         return list(csv.DictReader(f))
 
 
+# --en: traducción de los textos de cada figura (subcadenas, en orden)
+EN = [("Throughput vs. configuración (escritorio + web, 2000 consultas)", "Throughput vs. configuration (desktop + web, 2000 queries)"),
+      ("Entrenamiento: tiempo por época", "Training: time per epoch"), ("Speedup respecto a secuencial", "Speedup vs. sequential"),
+      ("Latencia media vs. número de nodos IA", "Mean latency vs. number of AI nodes"),
+      ("1 núcleo por nodo (seq → dist)", "1 core per node (seq → dist)"), ("todos los núcleos (par → pardist)", "all cores (par → pardist)"),
+      ("Saturación: latencia media por cliente", "Saturation: mean latency per client"),
+      ("Saturación: throughput por cliente (errores:", "Saturation: throughput per client (errors:"),
+      ("RabbitMQ bajo carga (saturación): mensajes pendientes por cola", "RabbitMQ under load (saturation): pending messages per queue"),
+      ("RabbitMQ con 1 nodo IA de 1 núcleo (seq): mensajes pendientes", "RabbitMQ with 1 single-core AI node (seq): pending messages"),
+      ("CPU media por nodo (saturación)", "Mean CPU per node (saturation)"), ("Memoria máxima por nodo (saturación)", "Peak memory per node (saturation)"),
+      ("% del total de núcleos", "% of all cores"), ("mensajes en cola", "messages in queue"), ("transacciones/s", "transactions/s"),
+      ("Confusión – modelo", "Confusion – model"), ("(prueba)", "(test)"), ("predicha", "predicted"),
+      ("células sanguíneas", "blood cells"), ("Modelo ", "Model "), ("Accuracy", "Accuracy"), ("entrenamiento", "training"),
+      ("validación", "validation"), ("época", "epoch"), ("segundos", "seconds"), ("nodos IA", "AI nodes"),
+      ("(sangre)", "(blood)"), ("no-infectada", "uninfected"), ("parasitada", "parasitized"),
+      ("basofilo", "basophil"), ("eosinofilo", "eosinophil"), ("eritroblasto", "erythroblast"),
+      ("granulocito-inmaduro", "immature granulocyte"), ("linfocito", "lymphocyte"), ("monocito", "monocyte"),
+      ("neutrofilo", "neutrophil"), ("plaqueta", "platelet"), ("real", "true")]
+INGLES = False
+
+
 def guardar(fig, nombre):
+    if INGLES:
+        for t in fig.findobj(matplotlib.text.Text):
+            texto = t.get_text()
+            for es, en in EN:
+                texto = texto.replace(es, en)
+            t.set_text(texto)
+        for ax in fig.axes:  # etiquetas de los ejes (las clases de las matrices de confusión)
+            for lbls, poner in ((ax.get_xticklabels(), ax.set_xticklabels), (ax.get_yticklabels(), ax.set_yticklabels)):
+                textos = [l.get_text() for l in lbls]
+                nuevos = [dict(EN).get(x, x) for x in textos]
+                if nuevos != textos:
+                    poner(nuevos, rotation=lbls[0].get_rotation(), ha=lbls[0].get_ha())
     fig.tight_layout()
     fig.savefig(os.path.join(G, nombre), dpi=150)
     plt.close(fig)
@@ -42,8 +81,9 @@ def barras(ax, etiquetas, valores, color, fmt="{:.1f}"):
 
 
 def entrenamiento():
-    ruta = os.path.join(R, "entrenamiento", "benchmark_entrenamiento.csv")
-    if not os.path.exists(ruta):
+    ruta = next((r for r in (os.path.join(R, "benchmark_entrenamiento.csv"),
+                             os.path.join(R, "entrenamiento", "benchmark_entrenamiento.csv")) if os.path.exists(r)), None)
+    if not ruta:
         return
     filas = leer(ruta)
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4))
@@ -70,7 +110,7 @@ def entrenamiento():
 
 def curvas_y_confusion():
     for mod, nombre in [("A", "malaria"), ("B", "células sanguíneas")]:
-        ruta = os.path.join(R, "modelos", f"entrenamiento_{mod}_par.csv")
+        ruta = os.path.join(MODELOS, f"entrenamiento_{mod}_par.csv")
         if not os.path.exists(ruta):
             continue
         f = leer(ruta)
@@ -82,7 +122,7 @@ def curvas_y_confusion():
             ax.set(title=f"Modelo {mod} ({nombre}): {tit}", xlabel="época")
             ax.legend()
         guardar(fig, f"2_curvas_modelo_{mod}.png")
-        conf = leer(os.path.join(R, "modelos", f"confusion_{mod}_par.csv"))
+        conf = leer(os.path.join(MODELOS, f"confusion_{mod}_par.csv"))
         clases = list(conf[0].keys())[1:]
         m = [[int(fila[c]) for c in clases] for fila in conf]
         fig, ax = plt.subplots(figsize=(max(4.2, 1.2 + 0.75 * len(clases)), max(3.6, 0.9 + 0.65 * len(clases))))
@@ -119,12 +159,12 @@ def carga():
         guardar(fig, "4_throughput_vs_configuracion.png")
 
         fig, ax = plt.subplots(figsize=(6.5, 3.8))
-        for i, (cfg, base) in enumerate([("dist", ("seq", "1")), ("pardist", None)]):
+        for i, (cfg, base) in enumerate([("dist", ("seq", "1")), ("pardist", ("par", "1"))]):
             ks = ([base] if base in agg else []) + [k for k in claves if k[0] == cfg]
             ks = sorted(ks, key=lambda k: int(k[1]))
             if ks:
                 ax.plot([int(k[1]) for k in ks], [agg[k][1] / agg[k][2] for k in ks], "o-", color=SERIE[i], lw=2, ms=7,
-                        label="1 núcleo por nodo" if cfg == "dist" else "4 núcleos por nodo")
+                        label="1 núcleo por nodo (seq → dist)" if cfg == "dist" else "todos los núcleos (par → pardist)")
         ax.set_xticks([1, 2, 3])
         ax.set(title="Latencia media vs. número de nodos IA", xlabel="nodos IA", ylabel="ms")
         ax.legend()
@@ -141,9 +181,9 @@ def carga():
         guardar(fig, "6_saturacion_latencia_errores.png")
 
 
-def rabbit_y_nodos(corrida="saturacion"):
-    ruta = os.path.join(R, f"colas_{corrida}.csv")
-    if os.path.exists(ruta):
+def colas(corrida, nombre, titulo):
+    ruta = (glob.glob(os.path.join(R, f"colas_{corrida}*.csv")) or [""])[0]
+    if ruta:
         series = defaultdict(lambda: ([], []))
         for f in leer(ruta):
             series[f["cola"]][0].append(float(f["t_s"]))
@@ -153,14 +193,20 @@ def rabbit_y_nodos(corrida="saturacion"):
         for i, q in enumerate(colas):
             if q in series:
                 ax.plot(*series[q], color=SERIE[i], lw=2, label=q)
-        ax.set(title="RabbitMQ bajo carga: mensajes pendientes por cola", xlabel="segundos", ylabel="mensajes en cola")
+        ax.set(title=titulo, xlabel="segundos", ylabel="mensajes en cola")
         ax.legend(ncol=3, fontsize=8)
-        guardar(fig, "7_rabbitmq_colas_bajo_carga.png")
-    ruta = os.path.join(R, f"metricas_nodos_{corrida}.csv")
-    if os.path.exists(ruta):
+        guardar(fig, nombre)
+
+
+def rabbit_y_nodos(corrida="saturacion"):
+    colas(corrida, "7_rabbitmq_colas_bajo_carga.png", "RabbitMQ bajo carga (saturación): mensajes pendientes por cola")
+    colas("seq", "7b_rabbitmq_colas_secuencial.png", "RabbitMQ con 1 nodo IA de 1 núcleo (seq): mensajes pendientes")
+    ruta = (glob.glob(os.path.join(R, f"metricas_nodos_{corrida}*.csv")) or [""])[0]
+    if ruta:
         por = defaultdict(lambda: ([], [], []))
         for f in leer(ruta):
-            n = f["rol"] + " " + f["nodo"].split("-")[1] if f["rol"] == "IA" else f["rol"]
+            maquina = "-".join(f["nodo"].split("-")[1:-1]) if f["rol"] == "IA" else ""
+            n = f"IA {ALIAS.get(maquina, maquina)}" if f["rol"] == "IA" else f["rol"]
             por[n][0].append(float(f["t_s"]))
             por[n][1].append(float(f["cpu_pct"]))
             por[n][2].append(float(f["mem_mb"]))
@@ -177,6 +223,13 @@ def rabbit_y_nodos(corrida="saturacion"):
 
 
 if __name__ == "__main__":
+    a = argparse.ArgumentParser()
+    a.add_argument("--resultados", default=BASE)
+    a.add_argument("--modelos", default=MODELOS, help="CSV del entrenamiento de los modelos entregados")
+    a.add_argument("--en", action="store_true", help="textos en inglés (en la carpeta graficas_en/)")
+    a = a.parse_args()
+    INGLES = a.en
+    R, G, MODELOS = a.resultados, os.path.join(a.resultados, "graficas_en" if a.en else "graficas"), a.modelos
     os.makedirs(G, exist_ok=True)
     entrenamiento()
     curvas_y_confusion()

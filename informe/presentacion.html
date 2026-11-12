@@ -27,6 +27,7 @@
   <h1>Borg IA Cube</h1>
   <p>Sistema distribuido de CNN con chat multiplataforma y middleware RabbitMQ</p>
   <p style="margin-top:12mm">Práctica Calificada 3 · CC4P1 Programación Concurrente y Distribuida · UNI 2026-II</p>
+  <p>Farid (Integrante01) · Hector (Integrante02) · Jorly (Integrante03)</p>
 </div>
 
 <div class="s">
@@ -69,6 +70,19 @@
 </div>
 
 <div class="s">
+  <h2>El clúster real del equipo</h2>
+  <table>
+    <tr><th>Nodo</th><th>SO</th><th>Lenguaje</th><th>Base</th></tr>
+    <tr><td>Servidor en Google Cloud (Santiago): RabbitMQ + backend + web</td><td>Linux</td><td>Java</td><td>—</td></tr>
+    <tr><td>Laptop de Integrante01 (Farid): BD2 + nodo IA</td><td>Windows</td><td>Python · Go</td><td>MariaDB</td></tr>
+    <tr><td>Laptop de Integrante02: BD1 + nodo IA + carga</td><td>Windows</td><td>Python · Go</td><td>PostgreSQL</td></tr>
+    <tr><td>Laptop de Integrante03 (Jorly): BD3 + nodo IA</td><td>Windows</td><td>Python · Go</td><td>MySQL</td></tr>
+    <tr><td>Celular: cliente</td><td>Android</td><td>Kotlin</td><td>—</td></tr>
+  </table>
+  <p>3 SO · 3 BD en nodos independientes · 4 lenguajes. Todos se conectan hacia la nube: sin abrir puertos en casa.</p>
+</div>
+
+<div class="s">
   <h2>La CNN: dos micro chunks</h2>
   <div class="dos">
     <div>
@@ -83,8 +97,8 @@
 
 <div class="s">
   <h2>Entrenamiento en 4 configuraciones</h2>
-  <img src="../resultados/graficas/1_entrenamiento_tiempo_speedup.png" style="max-height:105mm">
-  <p style="text-align:center">Paralelo (12 hilos): <b>7,0–7,5×</b> · Distribuido (3 nodos × 1 núcleo): <b>3,4–3,9×</b> · Paralelo distribuido (3 × 4): <b>5,7–5,9×</b></p>
+  <img src="../resultados/equipo/graficas/1_entrenamiento_tiempo_speedup.png" style="max-height:100mm">
+  <p style="text-align:center">Clúster real (3 laptops por internet): paralelo <b>6,0×</b> · distribuido <b>0,7×</b> · paralelo distribuido <b>1,3×</b><br>Por internet, enviar el modelo en cada ronda cuesta más que el cálculo (sin red, el distribuido acelera 3,4×): <b>costo de paralelización</b>.</p>
 </div>
 
 <div class="s">
@@ -102,20 +116,20 @@
 <div class="s">
   <h2>Inferencia: throughput y latencia</h2>
   <div class="dos">
-    <img src="../resultados/graficas/4_throughput_vs_configuracion.png">
-    <img src="../resultados/graficas/5_latencia_vs_nodos.png">
+    <img src="../resultados/equipo/graficas/4_throughput_vs_configuracion.png">
+    <img src="../resultados/equipo/graficas/5_latencia_vs_nodos.png">
   </div>
-  <p>Más nodos IA bajan la latencia de 3,4 s a 1,5 s; el throughput se estabiliza en ~180 tx/s porque el cuello de botella pasa a los nodos BD.</p>
+  <p>Con 1 hilo, la cola de los modelos llega a ~400 mensajes y la latencia a 12,8 s; con más hilos o nodos baja a 1,4 s. Luego el límite pasa a la validación en BD2 (~54 tx/s).</p>
 </div>
 
 <div class="s">
   <h2>Saturación: Android + escritorio + web a la vez</h2>
   <div class="dos">
-    <img src="../resultados/graficas/7_rabbitmq_colas_bajo_carga.png">
+    <img src="../resultados/equipo/graficas/7_rabbitmq_colas_bajo_carga.png">
     <div style="flex:0.55">
       <p><span class="grande">3000</span><br>transacciones</p>
       <p><span class="grande">0</span><br>errores</p>
-      <p>Los mensajes esperan en las colas y se vacían en ~2 s.</p>
+      <p>Escritorio, web y el celular a la vez, por internet. Ningún nodo pasa del 10 % de CPU: el límite es la red.</p>
     </div>
   </div>
 </div>
@@ -124,9 +138,9 @@
   <h2>Conclusiones</h2>
   <ul>
     <li>Flujo completo con los 3 clientes: <b>sockets propios + RabbitMQ</b> como único middleware.</li>
-    <li>CNN propia: <b>95,2 %</b> y <b>88,6 %</b>. Entrenamiento hasta <b>7,5×</b> más rápido.</li>
+    <li>CNN propia: <b>95,2 %</b> y <b>88,6 %</b>. Entrenamiento paralelo <b>6×</b> más rápido; distribuido por internet, más lento por la comunicación.</li>
     <li>RabbitMQ absorbe los picos: <b>0 errores</b> en la saturación, y cada cola muestra dónde está el cuello de botella.</li>
-    <li>BD1, BD2 y BD3 <b>consistentes</b> tras 17 131 consultas y 1000 registros concurrentes.</li>
+    <li>BD1, BD2 y BD3 <b>consistentes</b> tras 12 308 consultas y 1000 registros, en 3 casas distintas.</li>
   </ul>
   <div class="pie">¡Gracias!</div>
 </div>

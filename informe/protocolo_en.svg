@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" font-family="Segoe UI, Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f1f1e"/>
+    </marker>
+    <style>
+      .c{fill:#fff;stroke:#5f5e5a;stroke-width:1.4}.t{font-weight:600;fill:#1f1f1e;text-anchor:middle}
+      .v{stroke:#c3c2b7;stroke-width:1.2;stroke-dasharray:4 4}
+      .m{stroke:#1f1f1e;stroke-width:1.4;marker-end:url(#f)}.r{stroke:#2a78d6;stroke-width:1.4;marker-end:url(#f);stroke-dasharray:5 3}
+      .x{fill:#1f1f1e}.xs{fill:#5f5e5a;font-size:11px}
+    </style>
+  </defs>
+  <!-- participantes: x centros -->
+  <g>
+    <rect class="c" x="20" y="15" width="100" height="34" rx="6"/><text class="t" x="70" y="37">Client</text>
+    <rect class="c" x="160" y="15" width="100" height="34" rx="6"/><text class="t" x="210" y="37">Backend</text>
+    <rect class="c" x="300" y="15" width="110" height="34" rx="6" fill="#fff4ec"/><text class="t" x="355" y="37">RabbitMQ</text>
+    <rect class="c" x="450" y="15" width="100" height="34" rx="6"/><text class="t" x="500" y="37">AI node</text>
+    <rect class="c" x="590" y="15" width="110" height="34" rx="6"/><text class="t" x="645" y="37">BD2 MariaDB</text>
+    <rect class="c" x="740" y="15" width="130" height="34" rx="6"/><text class="t" x="805" y="37">BD1 / BD3</text>
+  </g>
+  <line class="v" x1="70" y1="49" x2="70" y2="545"/><line class="v" x1="210" y1="49" x2="210" y2="545"/>
+  <line class="v" x1="355" y1="49" x2="355" y2="545"/><line class="v" x1="500" y1="49" x2="500" y2="545"/>
+  <line class="v" x1="645" y1="49" x2="645" y2="545"/><line class="v" x1="805" y1="49" x2="805" y2="545"/>
+
+  <line class="m" x1="70" y1="78" x2="208" y2="78"/><text class="x" x="76" y="72">1. QUERY (TCP): token, model, Base64 payload</text>
+  <line class="m" x1="210" y1="108" x2="353" y2="108"/><text class="x" x="216" y="102">2. REQUEST → cola_validacion</text>
+  <line class="m" x1="355" y1="130" x2="643" y2="130"/><text class="xs" x="420" y="124">active client, model, format, quota (FOR UPDATE)</text>
+  <line class="r" x1="645" y1="152" x2="212" y2="152"/><text class="xs" x="420" y="146">3. valid (reply_to, correlation_id)</text>
+  <line class="r" x1="210" y1="176" x2="72" y2="176"/><text class="xs" x="80" y="170">4. ACK QUEUED</text>
+  <line class="m" x1="210" y1="204" x2="353" y2="204"/><text class="x" x="216" y="198">5. → cola_modeloA|B</text>
+  <line class="m" x1="355" y1="230" x2="498" y2="230"/><text class="xs" x="362" y="224">idSolicitud, image, modeloDestino</text>
+  <text class="xs" x="508" y="258">6. CNN: prepare → conv → MLP → softmax</text>
+  <line class="m" x1="500" y1="284" x2="357" y2="284"/><text class="x" x="368" y="278">7. → cola_resultadosA|B</text>
+  <line class="m" x1="355" y1="310" x2="803" y2="310"/><text class="xs" x="520" y="304">label, probabilities, AI node</text>
+  <line class="m" x1="805" y1="338" x2="647" y2="338"/><text class="xs" x="655" y="332">8. IMAGE → cola_validacion</text>
+  <line class="r" x1="645" y1="362" x2="803" y2="362"/><text class="xs" x="655" y="356">valid (rules, hash)</text>
+  <text class="xs" x="885" y="386" text-anchor="end">9. one transaction:</text>
+  <text class="xs" x="885" y="400" text-anchor="end">image + result + history</text>
+  <line class="m" x1="805" y1="418" x2="357" y2="418"/><text class="x" x="560" y="412">10. → cola_respuestas</text>
+  <line class="m" x1="355" y1="444" x2="212" y2="444"/><text class="xs" x="222" y="438">result + idSolicitud</text>
+  <text class="xs" x="220" y="470">11. Correlator: idSolicitud → session</text>
+  <line class="m" x1="210" y1="498" x2="72" y2="498"/><text class="x" x="80" y="492">12. RESULT (TCP)</text>
+  <text class="xs" x="20" y="535">Solid line: published message; dashed line: RPC reply (reply_to + correlation_id).</text>
+</svg>

@@ -1,0 +1,16 @@
+chequeo,valor,estado
+Resultados en BD1 (PostgreSQL),5835,
+Resultados en BD3 (MySQL),6473,
+Validaciones IMAGEN válidas en BD2 (MariaDB),12308,
+Resultados sin validación válida en BD2,0,OK
+id_solicitud presentes en BD1 y BD3 a la vez,0,OK
+Clientes de BD1/BD3 inexistentes o suspendidos en BD2,0,OK
+id_solicitud duplicados,0,OK
+Historial OK (BD1 + BD3),12308,
+Historial RECHAZADO (BD1 + BD3),0,
+Historial ERROR (BD1 + BD3),0,
+Consultas enviadas (CSV de carga),10000,
+Consultas OK según los clientes,10000,
+Consultas OK de clientes sin resultado en BD1/BD3,0,OK
+Registros de clientes enviados / OK (CSV de carga),1000/1000,
+Clientes totales en BD2,2004,

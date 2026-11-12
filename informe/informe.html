@@ -27,7 +27,7 @@
   <h1 style="margin-top:40px">Práctica Calificada 3</h1>
   <p style="font-size:14pt">Borg IA Cube: sistema distribuido de CNN con chat multiplataforma y middleware RabbitMQ</p>
   <p style="margin-top:30px">CC4P1 Programación Concurrente y Distribuida · Ciclo 2026-II</p>
-  <p style="margin-top:40px">Integrantes: ______________________________</p>
+  <p style="margin-top:40px">Integrantes: Farid (Integrante01) · Hector (Integrante02) · Jorly (Integrante03)</p>
 </div>
 
 <h2>1. Resumen</h2>
@@ -37,10 +37,12 @@
   <tr><th>Resultado</th><th>Valor</th></tr>
   <tr><td>Accuracy de prueba, modelo A (malaria)</td><td class="n">95,2 %</td></tr>
   <tr><td>Accuracy de prueba, modelo B (células sanguíneas)</td><td class="n">88,6 %</td></tr>
-  <tr><td>Speedup del entrenamiento, paralelo con 12 hilos</td><td class="n">7,0× (A) · 7,5× (B)</td></tr>
+  <tr><td>Speedup del entrenamiento, paralelo con 12 hilos</td><td class="n">6,0× (A) · 5,9× (B)</td></tr>
+  <tr><td>Inferencia en el clúster real: 8000 consultas en las 4 configuraciones</td><td class="n">0 errores</td></tr>
   <tr><td>Saturación: 3000 transacciones (Android + escritorio + web a la vez)</td><td class="n">0 errores</td></tr>
-  <tr><td>Consistencia de BD1, BD2 y BD3 tras 17 131 consultas y 1000 registros</td><td class="n">sin inconsistencias</td></tr>
+  <tr><td>Consistencia de BD1, BD2 y BD3 tras 12 308 consultas y 1000 registros</td><td class="n">sin inconsistencias</td></tr>
 </table>
+<p>Todas las mediciones se hicieron el 11/11/2026 con el clúster real del equipo: servidor en Google Cloud y una laptop por integrante, cada una con su base de datos y su nodo IA, conectadas por internet desde sus casas.</p>
 
 <h2>2. Arquitectura</h2>
 <figure><img src="arquitectura.svg" alt="Arquitectura"><figcaption>Figura 1. Arquitectura diseñada.</figcaption></figure>
@@ -163,77 +165,77 @@ cola_respuestas:   {"idSolicitud":"5e0b…","estado":"OK","resultado":{…},"nod
 
 <h2>8. Despliegue en red</h2>
 <table>
-  <tr><th>Nodo</th><th>SO</th><th>Lenguaje</th><th>Base</th></tr>
-  <tr><td>Servidor en Google Cloud (VM Ubuntu): RabbitMQ + backend + servidor web</td><td>Linux</td><td>Java</td><td>—</td></tr>
-  <tr><td>Laptop 1: nodo BD2 y clientes de escritorio y web</td><td>Windows</td><td>Python, Java</td><td>MariaDB</td></tr>
-  <tr><td>Laptop 2: nodos IA y nodo BD1</td><td>Linux</td><td>Go, Python</td><td>PostgreSQL</td></tr>
-  <tr><td>Laptop 3: nodo BD3 y nodos IA</td><td>Windows</td><td>Python, Go</td><td>MySQL</td></tr>
-  <tr><td>Celular</td><td>Android</td><td>Kotlin</td><td>—</td></tr>
+  <tr><th>Nodo</th><th>Máquina</th><th>SO</th><th>Lenguaje</th><th>Base</th></tr>
+  <tr><td>Servidor: RabbitMQ + backend + servidor web</td><td>VM <code>oac-servidor</code> en Google Cloud (Santiago de Chile), IP 34.176.215.27</td><td>Linux (Ubuntu 24.04)</td><td>Java</td><td>—</td></tr>
+  <tr><td>Nodo BD2 (validación) + nodo IA</td><td>Laptop de Integrante01 (Farid), 12 núcleos lógicos</td><td>Windows</td><td>Python · Go</td><td>MariaDB</td></tr>
+  <tr><td>Nodo BD1 (modelo A) + nodo IA + generador de carga y coordinador de entrenamiento</td><td>Laptop de Integrante02, Intel Core i5-13420H (12 núcleos lógicos), 32 GB</td><td>Windows (BD y nodo IA en contenedores Docker)</td><td>Python · Go</td><td>PostgreSQL</td></tr>
+  <tr><td>Nodo BD3 (modelo B) + nodo IA</td><td>Laptop de Integrante03 (Jorly), 12 núcleos lógicos</td><td>Windows</td><td>Python · Go</td><td>MySQL</td></tr>
+  <tr><td>Cliente móvil</td><td>Celular</td><td>Android</td><td>Kotlin</td><td>—</td></tr>
 </table>
-<p>Todos los nodos se conectan <i>hacia</i> el servidor (<code>CUBO_RABBIT_URL=amqp://cubo:…@IP:5672/cubo</code>), así que no hace falta abrir puertos en las laptops; en la VM se abren 5000, 8080 y 5672. Los pasos están en <code>PC3/NUBE_GCP.md</code>.</p>
+<p>El sistema usa <b>3 SO</b> (Linux, Windows y Android), <b>3 motores de BD</b> en 3 nodos independientes y <b>4 lenguajes</b>: Java en el servidor, Python en los nodos BD, Go en los nodos IA y Kotlin en el cliente móvil. Todos los nodos se conectan <i>hacia</i> el servidor (<code>CUBO_RABBIT_URL=amqp://cubo:…@34.176.215.27:5672/cubo</code>), así que no hubo que abrir puertos en las casas; en la VM se abren 5000, 8080 y 5672. Los pasos están en <code>NUBE_GCP.md</code> y <code>GUIA_EQUIPO.md</code>.</p>
 
-<h2>9. Evaluación de desempeño</h2>
-<div class="nota">Entorno de las mediciones: una laptop con Intel Core i5-13420H (8 núcleos, 12 hilos) y 16 GB de RAM. Cada "máquina" de las configuraciones distribuidas es un contenedor Linux limitado a núcleos propios con <code>--cpuset-cpus</code>: 1 núcleo físico en <i>dist</i> y 4 núcleos lógicos en <i>pardist</i>. RabbitMQ, el backend y los nodos BD corren en Windows. Los mismos scripts sirven en el clúster real.</div>
+<h2>9. Evaluación de desempeño (clúster real del equipo)</h2>
+<div class="nota">Cada consulta cruza internet varias veces: del cliente al backend en Santiago, de RabbitMQ al nodo IA, a BD2 (dos veces) y a BD1 o BD3, cada uno en una casa distinta. Por eso las latencias son de segundos y no de milisegundos. La carga se lanzó desde la laptop de Integrante02, que también corre BD1 y un nodo IA.</div>
+
 <h3>9.1 Entrenamiento en las 4 configuraciones (3 épocas, semilla fija)</h3>
 <table>
   <tr><th>Configuración</th><th>Máquinas × hilos</th><th>A: s/época</th><th>A: speedup</th><th>A: acc. prueba</th><th>B: s/época</th><th>B: speedup</th><th>B: acc. prueba</th></tr>
-  <tr><td>Secuencial</td><td>1 × 1</td><td class="n">57,4</td><td class="n">1,00</td><td class="n">95,3 %</td><td class="n">25,9</td><td class="n">1,00</td><td class="n">83,7 %</td></tr>
-  <tr><td>Paralelo</td><td>1 × 12</td><td class="n">8,2</td><td class="n">7,02</td><td class="n">95,0 %</td><td class="n">3,4</td><td class="n">7,51</td><td class="n">83,9 %</td></tr>
-  <tr><td>Distribuido</td><td>2 × 1</td><td class="n">26,8</td><td class="n">2,14</td><td class="n">92,6 %</td><td class="n">11,4</td><td class="n">2,26</td><td class="n">82,3 %</td></tr>
-  <tr><td>Distribuido</td><td>3 × 1</td><td class="n">16,8</td><td class="n">3,41</td><td class="n">82,3 %</td><td class="n">6,7</td><td class="n">3,85</td><td class="n">80,2 %</td></tr>
-  <tr><td>Paralelo distribuido</td><td>2 × 4</td><td class="n">10,6</td><td class="n">5,40</td><td class="n">92,9 %</td><td class="n">4,7</td><td class="n">5,47</td><td class="n">82,9 %</td></tr>
-  <tr><td>Paralelo distribuido</td><td>3 × 4</td><td class="n">10,2</td><td class="n">5,65</td><td class="n">82,9 %</td><td class="n">4,4</td><td class="n">5,90</td><td class="n">80,5 %</td></tr>
+  <tr><td>Secuencial</td><td>1 × 1</td><td class="n">38,4</td><td class="n">1,00</td><td class="n">95,3 %</td><td class="n">16,6</td><td class="n">1,00</td><td class="n">83,7 %</td></tr>
+  <tr><td>Paralelo</td><td>1 × 12</td><td class="n">6,4</td><td class="n">6,00</td><td class="n">95,0 %</td><td class="n">2,8</td><td class="n">5,88</td><td class="n">83,9 %</td></tr>
+  <tr><td>Distribuido</td><td>3 × 1 (las 3 laptops)</td><td class="n">56,3</td><td class="n">0,68</td><td class="n">82,3 %</td><td class="n">26,3</td><td class="n">0,63</td><td class="n">80,2 %</td></tr>
+  <tr><td>Paralelo distribuido</td><td>3 × 12 (las 3 laptops)</td><td class="n">30,1</td><td class="n">1,27</td><td class="n">83,4 %</td><td class="n">16,6</td><td class="n">1,00</td><td class="n">80,6 %</td></tr>
 </table>
-<figure><img src="../resultados/graficas/1_entrenamiento_tiempo_speedup.png" alt=""><figcaption>Figura 7. Tiempo por época y speedup del entrenamiento.</figcaption></figure>
-<p>El paralelo en una máquina es el más rápido porque no paga comunicación. El distribuido escala casi linealmente (2,1× con 2 nodos y 3,4× con 3, cada uno con 1 núcleo): incluso supera la eficiencia ideal porque cada nodo usa un núcleo físico completo y su parte de los datos cabe mejor en caché. En el paralelo distribuido, el tercer nodo aporta poco: sus núcleos (8–11) son los de eficiencia del i5 y además los comparte con RabbitMQ y Windows. El promedio de modelos cada 10 pasos baja el accuracy con 3 nodos y solo 3 épocas (82–83 %), porque cada nodo ve un tercio de los datos entre promedios; con más épocas o sincronizando más seguido se recupera (el modelo entregado se entrenó 12 épocas).</p>
+<figure><img src="../resultados/equipo/graficas/1_entrenamiento_tiempo_speedup.png" alt=""><figcaption>Figura 7. Tiempo por época y speedup del entrenamiento en el clúster real.</figcaption></figure>
+<p>El paralelo en una máquina es 6× más rápido. En cambio, por internet, el <b>distribuido es más lento que el secuencial</b>. En cada ronda (10 pasos de SGD), cada nodo recibe y devuelve el modelo completo (~270 KB) pasando por el servidor en Santiago, y ese costo de comunicación supera lo que se gana repartiendo el cálculo. El paralelo distribuido lo compensa en parte porque cada nodo calcula su ronda con 12 hilos. Para contrastar, en la misma prueba sin red (3 contenedores en una sola laptop, 10/11/2026) el distribuido 3 × 1 sí aceleraba 3,4× y el paralelo distribuido 5,7×. Es el costo de paralelización visto en clase: la comunicación pesa más que el cómputo cuando la red es lenta y cada tarea es pequeña. El accuracy baja a 80–83 % porque cada nodo ve un tercio de los datos entre promedios y solo hay 3 épocas; el modelo entregado se entrenó 12 épocas en paralelo.</p>
 
 <h3>9.2 Inferencia: 2000 consultas (1000 por escritorio + 1000 por web, 32 sesiones, delay aleatorio 0–50 ms)</h3>
 <table>
-  <tr><th>Configuración</th><th>Nodos IA × núcleos</th><th>Throughput (tx/s)</th><th>Latencia media (ms)</th><th>Errores</th></tr>
-  <tr><td>Secuencial</td><td>1 × 1 (1 hilo)</td><td class="n">155,4</td><td class="n">3 410</td><td class="n">0</td></tr>
-  <tr><td>Paralelo</td><td>1 × 4 (8 hilos)</td><td class="n">176,4</td><td class="n">2 037</td><td class="n">0</td></tr>
-  <tr><td>Distribuido</td><td>2 × 1</td><td class="n">174,1</td><td class="n">2 444</td><td class="n">0</td></tr>
-  <tr><td>Distribuido</td><td>3 × 1</td><td class="n">179,9</td><td class="n">2 069</td><td class="n">0</td></tr>
-  <tr><td>Paralelo distribuido</td><td>1 × 4</td><td class="n">180,2</td><td class="n">2 143</td><td class="n">0</td></tr>
-  <tr><td>Paralelo distribuido</td><td>2 × 4</td><td class="n">180,8</td><td class="n">1 478</td><td class="n">0</td></tr>
-  <tr><td>Paralelo distribuido</td><td>3 × 4</td><td class="n">176,5</td><td class="n">1 939</td><td class="n">0</td></tr>
+  <tr><th>Configuración</th><th>Nodos IA × núcleos</th><th>Throughput (tx/s)</th><th>Latencia media (ms)</th><th>Máx. en <code>cola_modeloA/B</code></th><th>Errores</th></tr>
+  <tr><td>Secuencial</td><td>1 × 1 (1 hilo)</td><td class="n">33,2</td><td class="n">12 839</td><td class="n">418 / 380</td><td class="n">0</td></tr>
+  <tr><td>Paralelo</td><td>1 × 12</td><td class="n">52,5</td><td class="n">1 412</td><td class="n">0 / 0</td><td class="n">0</td></tr>
+  <tr><td>Distribuido</td><td>3 × 1 (las 3 laptops)</td><td class="n">43,5</td><td class="n">1 699</td><td class="n">1 / 3</td><td class="n">0</td></tr>
+  <tr><td>Paralelo distribuido</td><td>3 × 12 (las 3 laptops)</td><td class="n">54,1</td><td class="n">1 367</td><td class="n">0 / 0</td><td class="n">0</td></tr>
 </table>
 <div style="display:flex;gap:10px">
-  <figure style="flex:1.2"><img src="../resultados/graficas/4_throughput_vs_configuracion.png" alt=""><figcaption>Figura 8. Throughput vs. configuración.</figcaption></figure>
-  <figure style="flex:1"><img src="../resultados/graficas/5_latencia_vs_nodos.png" alt=""><figcaption>Figura 9. Latencia vs. número de nodos IA.</figcaption></figure>
+  <figure style="flex:1.2"><img src="../resultados/equipo/graficas/4_throughput_vs_configuracion.png" alt=""><figcaption>Figura 8. Throughput vs. configuración.</figcaption></figure>
+  <figure style="flex:1"><img src="../resultados/equipo/graficas/5_latencia_vs_nodos.png" alt=""><figcaption>Figura 9. Latencia vs. número de nodos IA.</figcaption></figure>
 </div>
-<p>En secuencial el cuello de botella es el nodo IA: <code>cola_modeloA/B</code> llega a 346 mensajes en espera. Con más núcleos o más nodos esas colas quedan vacías y la latencia baja de 3,4 s a 1,5 s; a partir de ahí lo que se acumula es <code>cola_resultadosA/B</code>. El límite pasa a los nodos BD, que por cada consulta validan contra BD2 y hacen una transacción, y el throughput se estabiliza en unos 180 tx/s. Para subirlo habría que replicar los nodos BD1/BD3 o darles más hilos, no agregar nodos IA. Una inferencia aislada tarda unos 2,6 ms.</p>
+<figure><img src="../resultados/equipo/graficas/7b_rabbitmq_colas_secuencial.png" alt=""><figcaption>Figura 10. Colas de RabbitMQ con un solo nodo IA de 1 núcleo: se acumulan los mensajes de los modelos.</figcaption></figure>
+<p>En secuencial, <code>cola_modeloA/B</code> llega a ~400 mensajes en espera y la latencia sube a 12,8 s. Lo curioso es que el nodo IA usa solo ~20 % de su núcleo: con 1 hilo, RabbitMQ le entrega un mensaje a la vez (<i>prefetch</i> 1), y cada mensaje espera un viaje de ida y vuelta a Santiago antes del siguiente. Con 12 hilos (paralelo) o con 3 nodos (distribuido), varios mensajes viajan a la vez, las colas de los modelos quedan vacías y la latencia baja casi 10 veces. A partir de ahí el límite ya no es la IA: lo que más espera es <code>cola_validacion</code> (hasta 48 mensajes), porque BD2 valida cada consulta dos veces desde la casa de Integrante01. Por eso el throughput se estabiliza en unos 52–54 tx/s.</p>
 
 <h3>9.3 Prueba de saturación: Android + escritorio + web a la vez (1000 transacciones cada uno, delay aleatorio 0–50 ms, 3 nodos IA)</h3>
 <table>
   <tr><th>Cliente</th><th>Transacciones</th><th>OK</th><th>Tasa de errores</th><th>Latencia media (ms)</th><th>p95 (ms)</th><th>Throughput (tx/s)</th></tr>
-  <tr><td>Escritorio</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">2 046</td><td class="n">3 368</td><td class="n">83,8</td></tr>
-  <tr><td>Web</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">2 082</td><td class="n">3 372</td><td class="n">83,8</td></tr>
-  <tr><td>Android (Genymotion)</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">393</td><td class="n">2 607</td><td class="n">25,3</td></tr>
+  <tr><td>Escritorio</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">2 107</td><td class="n">3 498</td><td class="n">16,7</td></tr>
+  <tr><td>Web</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">2 116</td><td class="n">3 449</td><td class="n">16,6</td></tr>
+  <tr><td>Android (celular de Integrante01)</td><td class="n">1000</td><td class="n">1000</td><td class="n">0 %</td><td class="n">2 590</td><td class="n">—</td><td class="n">32,0</td></tr>
 </table>
-<figure><img src="../resultados/graficas/6_saturacion_latencia_errores.png" alt=""><figcaption>Figura 10. Latencia y throughput por cliente durante la saturación.</figcaption></figure>
-<figure><img src="../resultados/graficas/7_rabbitmq_colas_bajo_carga.png" alt=""><figcaption>Figura 11. Uso de RabbitMQ bajo carga: mensajes pendientes por cola.</figcaption></figure>
-<figure><img src="../resultados/graficas/8_cpu_memoria_por_nodo.png" alt=""><figcaption>Figura 12. CPU y memoria de cada nodo durante la saturación.</figcaption></figure>
-<p>Durante el pico, <code>cola_resultadosB</code> llega a ~330 mensajes y <code>cola_resultadosA</code> a ~270, y las dos se vacían en unos 2 s cuando termina la ráfaga. Las colas de los modelos casi no crecen. Android envía en un solo hilo con su propio delay, por eso ofrece menos carga y ve menos latencia. La CPU se mide como porcentaje del total de núcleos del equipo (los nodos IA, de los 4 núcleos de su contenedor). El backend Java es el que más memoria usa (167 MB); cada nodo IA en Go usa menos de 20 MB.</p>
+<p>Los valores de Android son los que mostró la app al terminar. Su CSV se sobrescribió en una corrida posterior que no tenía conexión, así que no hay p95. Un primer intento desde otro celular terminó con 0/1000 porque la app había perdido la conexión antes de empezar; las consultas ni siquiera salieron del teléfono, así que no afectan al sistema.</p>
+<figure><img src="../resultados/equipo/graficas/6_saturacion_latencia_errores.png" alt=""><figcaption>Figura 11. Latencia y throughput por cliente durante la saturación.</figcaption></figure>
+<figure><img src="../resultados/equipo/graficas/7_rabbitmq_colas_bajo_carga.png" alt=""><figcaption>Figura 12. Uso de RabbitMQ bajo carga: mensajes pendientes por cola durante la saturación.</figcaption></figure>
+<figure><img src="../resultados/equipo/graficas/8_cpu_memoria_por_nodo.png" alt=""><figcaption>Figura 13. CPU y memoria de cada nodo durante la saturación.</figcaption></figure>
+<p>Con los 3 nodos IA, las colas de los modelos no crecen. Lo que fluctúa es <code>cola_validacion</code> (máximo 38 mensajes), que se vacía en cuanto baja la ráfaga. Ningún nodo pasa del 10 % de CPU: el sistema está limitado por la latencia de red, no por cómputo. La CPU se mide como porcentaje del total de núcleos de cada máquina. El nodo IA de Integrante03 usa más memoria (250 MB) porque además tiene cargados los datasets para entrenar.</p>
 
 <h3>9.4 1000 registros nuevos y validación de BD1, BD2 y BD3</h3>
-<p>El generador registró 1000 clientes nuevos aleatorios (<code>--tipo REGISTRO</code>, 8 sesiones): 1000 OK, latencia media de 25 ms y 146 registros/s. Después de todas las pruebas, <code>verificar_consistencia.py</code> cruzó las tres bases:</p>
+<p>El generador registró 1000 clientes nuevos aleatorios (<code>--tipo REGISTRO</code>, 8 sesiones): 1000 OK, 116 ms de latencia media y 54 registros/s, validados y guardados en la BD2 de Integrante01. Al final, <code>verificar_consistencia.py</code> cruzó las tres bases por RabbitMQ:</p>
 <table>
   <tr><th>Chequeo</th><th>Valor</th></tr>
-  <tr><td>Resultados en BD1 (PostgreSQL) / BD3 (MySQL)</td><td class="n">8 510 / 8 621</td></tr>
-  <tr><td>Validaciones de imagen válidas en BD2 (MariaDB)</td><td class="n">17 131</td></tr>
+  <tr><td>Resultados en BD1 (PostgreSQL, Integrante02) / BD3 (MySQL, Integrante03)</td><td class="n">5 835 / 6 473</td></tr>
+  <tr><td>Validaciones de imagen válidas en BD2 (MariaDB, Integrante01)</td><td class="n">12 308</td></tr>
   <tr><td>Resultados sin validación en BD2 · en BD1 y BD3 a la vez · duplicados</td><td class="n">0 · 0 · 0</td></tr>
   <tr><td>Consultas OK para el cliente sin resultado guardado</td><td class="n">0</td></tr>
-  <tr><td>Clientes en BD2 (1004 iniciales + 1000 registrados + 1 de prueba manual)</td><td class="n">2 005</td></tr>
+  <tr><td>Clientes en BD2 (1004 iniciales + 1000 registrados)</td><td class="n">2 004</td></tr>
   <tr><td><b>Resultado</b></td><td><b>BD1, BD2 y BD3 consistentes</b></td></tr>
 </table>
+<p>Las 12 308 validaciones incluyen las 10 000 consultas de los generadores, las 1000 del celular y algunas pruebas manuales previas; todas pasaron por el flujo completo.</p>
 
 <h2>10. Conclusiones</h2>
 <ul>
-  <li>El sistema cumple el flujo pedido de punta a punta con los tres clientes, usando sockets propios entre clientes y backend y RabbitMQ como único middleware entre el backend, los nodos IA y los nodos BD.</li>
-  <li>Las CNN escritas desde cero alcanzan 95,2 % (malaria) y 88,6 % (8 tipos de células). El entrenamiento escala hasta 7,5× en paralelo y 3,9× al distribuirlo en 3 nodos de un núcleo.</li>
-  <li>RabbitMQ desacopla las etapas: bajo saturación los mensajes esperan en las colas en lugar de perderse (0 errores en 3000 transacciones simultáneas). La profundidad de cada cola muestra en tiempo real cuál es el cuello de botella.</li>
-  <li>Las transacciones, <code>FOR UPDATE</code>, las inserciones idempotentes y una conexión por hilo mantienen consistentes las tres bases bajo escritura concurrente.</li>
+  <li>El sistema funcionó de punta a punta en un clúster real (Google Cloud + 3 laptops en 3 casas + celular), con sockets propios entre clientes y backend y RabbitMQ como único middleware.</li>
+  <li>Las CNN escritas desde cero alcanzan 95,2 % (malaria) y 88,6 % (8 tipos de células). En una máquina, el entrenamiento paralelo es 6× más rápido.</li>
+  <li>Distribuir el entrenamiento por internet no acelera: el costo de comunicación supera al cómputo. Sin red sí acelera (3,4× con 3 nodos). Es el costo de paralelización, medido en la práctica.</li>
+  <li>En la inferencia, pasar de 1 hilo a varios hilos o nodos baja la latencia casi 10 veces. Después, el cuello de botella se mueve a la validación en BD2, y las colas de RabbitMQ muestran en tiempo real dónde está.</li>
+  <li>RabbitMQ absorbe los picos: 0 errores en 11 000 transacciones. Las transacciones, <code>FOR UPDATE</code>, las inserciones idempotentes y una conexión por hilo mantienen consistentes las tres bases.</li>
 </ul>
 
 <h2>Anexo: cómo ejecutar</h2>
